@@ -66,13 +66,12 @@ def get_expected(expected: Dict[str, Any]) -> Union["Op", "Func"]:
 
     # NOTE: Ignore ConditionalOperator
     ConditionalOp = OpAnd
-    if conditions:
-        output = conditions[0]
-        for condition in conditions[1:]:
-            output = ConditionalOp(output, condition)
-    else:
+    if not conditions:
         return OpDefault(None, None)  # type: ignore[arg-type]
 
+    output = conditions[0]
+    for condition in conditions[1:]:
+        output = ConditionalOp(output, condition)
     return output
 
 
@@ -202,8 +201,7 @@ class ConditionExpressionParser:
         nodes = self._apply_between(nodes)
         nodes = self._apply_parens_and_booleans(nodes)
         node = nodes[0]
-        op = self._make_op_condition(node)
-        return op
+        return self._make_op_condition(node)
 
     class Kind:
         """Enum defining types of nodes in the syntax tree."""
@@ -291,8 +289,7 @@ class ConditionExpressionParser:
         ]
 
         for nonterminal, pattern in patterns:
-            match = pattern.match(remaining_expression)
-            if match:
+            if match := pattern.match(remaining_expression):
                 match_text = match.group()
                 break
         else:  # pragma: no cover
@@ -858,7 +855,7 @@ class ConditionExpressionParser:
 
     def _assert(self, condition: bool, message: str, nodes: Iterable[Node]) -> None:
         if not condition:
-            raise ValueError(message + " " + " ".join([t.text for t in nodes]))
+            raise ValueError(f"{message} " + " ".join([t.text for t in nodes]))
 
 
 class Operand:
@@ -878,7 +875,7 @@ class AttributePath(Operand):
         path: list of int/str
 
         """
-        assert len(path) >= 1
+        assert path
         self.path = path
 
     def _get_attr(self, item: Optional[Item]) -> Any:
@@ -899,17 +896,11 @@ class AttributePath(Operand):
 
     def expr(self, item: Optional[Item]) -> Any:
         attr = self._get_attr(item)
-        if attr is None:
-            return None
-        else:
-            return attr.cast_value
+        return None if attr is None else attr.cast_value
 
     def get_type(self, item: Optional[Item]) -> Optional[str]:
         attr = self._get_attr(item)
-        if attr is None:
-            return None
-        else:
-            return attr.type
+        return None if attr is None else attr.type
 
     def __repr__(self) -> str:
         return ".".join(self.path)
@@ -937,7 +928,7 @@ class AttributeValue(Operand):
                 return float(self.value)
         elif self.type in ["SS", "NS", "BS"]:
             sub_type = self.type[0]
-            return set([AttributeValue({sub_type: v}).expr(item) for v in self.value])
+            return {AttributeValue({sub_type: v}).expr(item) for v in self.value}
         elif self.type == "L":
             return [AttributeValue(v).expr(item) for v in self.value]
         elif self.type == "M":
@@ -992,10 +983,7 @@ class OpLessThan(Op):
         lhs = self.lhs.expr(item)
         rhs = self.rhs.expr(item)
         # In python3 None is not a valid comparator when using < or > so must be handled specially
-        if lhs is not None and rhs is not None:
-            return lhs < rhs
-        else:
-            return False
+        return lhs < rhs if lhs is not None and rhs is not None else False
 
 
 class OpGreaterThan(Op):
@@ -1005,10 +993,7 @@ class OpGreaterThan(Op):
         lhs = self.lhs.expr(item)
         rhs = self.rhs.expr(item)
         # In python3 None is not a valid comparator when using < or > so must be handled specially
-        if lhs is not None and rhs is not None:
-            return lhs > rhs
-        else:
-            return False
+        return lhs > rhs if lhs is not None and rhs is not None else False
 
 
 class OpEqual(Op):
@@ -1036,10 +1021,7 @@ class OpLessThanOrEqual(Op):
         lhs = self.lhs.expr(item)
         rhs = self.rhs.expr(item)
         # In python3 None is not a valid comparator when using < or > so must be handled specially
-        if lhs is not None and rhs is not None:
-            return lhs <= rhs
-        else:
-            return False
+        return lhs <= rhs if lhs is not None and rhs is not None else False
 
 
 class OpGreaterThanOrEqual(Op):
@@ -1049,10 +1031,7 @@ class OpGreaterThanOrEqual(Op):
         lhs = self.lhs.expr(item)
         rhs = self.rhs.expr(item)
         # In python3 None is not a valid comparator when using < or > so must be handled specially
-        if lhs is not None and rhs is not None:
-            return lhs >= rhs
-        else:
-            return False
+        return lhs >= rhs if lhs is not None and rhs is not None else False
 
 
 class OpOr(Op):
@@ -1198,11 +1177,10 @@ class FuncIn(Func):
         super().__init__(attribute, *possible_values)
 
     def expr(self, item: Optional[Item]) -> bool:
-        for possible_value in self.possible_values:
-            if self.attr.expr(item) == possible_value.expr(item):
-                return True
-
-        return False
+        return any(
+            self.attr.expr(item) == possible_value.expr(item)
+            for possible_value in self.possible_values
+        )
 
 
 COMPARATOR_CLASS = {

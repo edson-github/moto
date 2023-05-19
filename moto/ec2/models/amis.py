@@ -129,7 +129,7 @@ class Ami(TaggedEC2Resource):
             return self.virtualization_type
         elif filter_name == "kernel-id":
             return self.kernel_id
-        elif filter_name in ["architecture", "platform"]:
+        elif filter_name in {"architecture", "platform"}:
             return getattr(self, filter_name)
         elif filter_name == "image-id":
             return self.id
@@ -152,7 +152,7 @@ class AmiBackend:
 
     def __init__(self) -> None:
         self.amis: Dict[str, Ami] = {}
-        self.deleted_amis: List[str] = list()
+        self.deleted_amis: List[str] = []
         self._load_amis()
 
     def _load_amis(self) -> None:
@@ -247,13 +247,9 @@ class AmiBackend:
         images = list(self.amis.copy().values())
 
         if ami_ids and len(ami_ids):
-            # boto3 seems to default to just searching based on ami ids if that parameter is passed
-            # and if no images are found, it raises an errors
-            # Note that we can search for images that have been previously deleted, without raising any errors
-            malformed_ami_ids = [
+            if malformed_ami_ids := [
                 ami_id for ami_id in ami_ids if not ami_id.startswith("ami-")
-            ]
-            if malformed_ami_ids:
+            ]:
                 raise MalformedAMIIdError(malformed_ami_ids)
 
             images = [ami for ami in images if ami.id in ami_ids]
@@ -267,9 +263,11 @@ class AmiBackend:
             if exec_users:
                 tmp_images = []
                 for ami in images:
-                    for user_id in exec_users:
-                        if user_id in ami.launch_permission_users:
-                            tmp_images.append(ami)
+                    tmp_images.extend(
+                        ami
+                        for user_id in exec_users
+                        if user_id in ami.launch_permission_users
+                    )
                 images = tmp_images
 
             # Limit by owner ids

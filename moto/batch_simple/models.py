@@ -32,7 +32,7 @@ class BatchSimpleBackend(BaseBackend):
         We intercept calls to `submit_job` and replace this with our own (non-Docker) implementation
         Every other method call is send through to batch_backend
         """
-        if name in [
+        if name in {
             "backend",
             "account_id",
             "region_name",
@@ -40,9 +40,9 @@ class BatchSimpleBackend(BaseBackend):
             "_url_module",
             "__class__",
             "url_bases",
-        ]:
+        }:
             return object.__getattribute__(self, name)
-        if name in ["submit_job"]:
+        if name in {"submit_job"}:
 
             def newfunc(*args: Any, **kwargs: Any) -> Any:
                 attr = object.__getattribute__(self, name)
@@ -86,12 +86,7 @@ class BatchSimpleBackend(BaseBackend):
         job.log_stream_name = job._stream_name
         job._start_attempt()
 
-        # We don't want to actually run the job - just mark it as succeeded or failed
-        # depending on whether env var MOTO_SIMPLE_BATCH_FAIL_AFTER is set
-        # if MOTO_SIMPLE_BATCH_FAIL_AFTER is set to an integer then batch will
-        # sleep this many seconds
-        should_batch_fail = getenv("MOTO_SIMPLE_BATCH_FAIL_AFTER")
-        if should_batch_fail:
+        if should_batch_fail := getenv("MOTO_SIMPLE_BATCH_FAIL_AFTER"):
             try:
                 batch_fail_delay = int(should_batch_fail)
                 sleep(batch_fail_delay)

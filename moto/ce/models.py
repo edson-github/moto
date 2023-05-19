@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Tuple, Optional
 
 def first_day() -> str:
     as_date = (
-        datetime.today()
+        datetime.now()
         .replace(day=1)
         .replace(hour=0)
         .replace(minute=0)
@@ -70,7 +70,7 @@ class CostExplorerBackend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.cost_categories: Dict[str, CostCategoryDefinition] = dict()
+        self.cost_categories: Dict[str, CostCategoryDefinition] = {}
         self.tagger = TaggingService()
 
     def create_cost_category_definition(

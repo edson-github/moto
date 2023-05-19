@@ -250,7 +250,7 @@ class DirectoryServiceBackend(BaseBackend):
         size: str,
         connect_settings: Dict[str, Any],
         tags: List[Dict[str, str]],
-    ) -> str:  # pylint: disable=too-many-arguments
+    ) -> str:    # pylint: disable=too-many-arguments
         """Create a fake AD Connector."""
         if len(self.directories) > Directory.CONNECTED_DIRECTORIES_LIMIT:
             raise DirectoryLimitExceededException(
@@ -279,8 +279,7 @@ class DirectoryServiceBackend(BaseBackend):
         # ConnectSettings and VpcSettings both have a VpcId and Subnets.
         self._verify_subnets(region, connect_settings)
 
-        errmsg = self.tagger.validate_tags(tags or [])
-        if errmsg:
+        if errmsg := self.tagger.validate_tags(tags or []):
             raise ValidationException(errmsg)
         if len(tags) > Directory.MAX_TAGS_PER_DIRECTORY:
             raise DirectoryLimitExceededException("Tag Limit is exceeding")
@@ -310,7 +309,7 @@ class DirectoryServiceBackend(BaseBackend):
         size: str,
         vpc_settings: Dict[str, Any],
         tags: List[Dict[str, str]],
-    ) -> str:  # pylint: disable=too-many-arguments
+    ) -> str:    # pylint: disable=too-many-arguments
         """Create a fake Simple Ad Directory."""
         if len(self.directories) > Directory.CLOUDONLY_DIRECTORIES_LIMIT:
             raise DirectoryLimitExceededException(
@@ -333,8 +332,7 @@ class DirectoryServiceBackend(BaseBackend):
         )
         self._verify_subnets(region, vpc_settings)
 
-        errmsg = self.tagger.validate_tags(tags or [])
-        if errmsg:
+        if errmsg := self.tagger.validate_tags(tags or []):
             raise ValidationException(errmsg)
         if len(tags) > Directory.MAX_TAGS_PER_DIRECTORY:
             raise DirectoryLimitExceededException("Tag Limit is exceeding")
@@ -394,7 +392,7 @@ class DirectoryServiceBackend(BaseBackend):
         vpc_settings: Dict[str, Any],
         edition: str,
         tags: List[Dict[str, str]],
-    ) -> str:  # pylint: disable=too-many-arguments
+    ) -> str:    # pylint: disable=too-many-arguments
         """Create a fake Microsoft Ad Directory."""
         if len(self.directories) > Directory.CLOUDONLY_MICROSOFT_AD_LIMIT:
             raise DirectoryLimitExceededException(
@@ -415,8 +413,7 @@ class DirectoryServiceBackend(BaseBackend):
         )
         self._verify_subnets(region, vpc_settings)
 
-        errmsg = self.tagger.validate_tags(tags or [])
-        if errmsg:
+        if errmsg := self.tagger.validate_tags(tags or []):
             raise ValidationException(errmsg)
         if len(tags) > Directory.MAX_TAGS_PER_DIRECTORY:
             raise DirectoryLimitExceededException("Tag Limit is exceeding")
@@ -518,8 +515,7 @@ class DirectoryServiceBackend(BaseBackend):
     ) -> None:
         """Add or overwrite one or more tags for specified directory."""
         self._validate_directory_id(resource_id)
-        errmsg = self.tagger.validate_tags(tags)
-        if errmsg:
+        if errmsg := self.tagger.validate_tags(tags):
             raise ValidationException(errmsg)
         if len(tags) > Directory.MAX_TAGS_PER_DIRECTORY:
             raise TagLimitExceededException("Tag limit exceeded")

@@ -93,7 +93,7 @@ class Pipeline(CloudFormationModel):
         datapipeline_backend = datapipeline_backends[account_id][region_name]
         properties = cloudformation_json["Properties"]
 
-        cloudformation_unique_id = "cf-" + resource_name
+        cloudformation_unique_id = f"cf-{resource_name}"
         pipeline = datapipeline_backend.create_pipeline(
             resource_name, cloudformation_unique_id
         )
@@ -120,12 +120,11 @@ class DataPipelineBackend(BaseBackend):
         return self.pipelines.values()
 
     def describe_pipelines(self, pipeline_ids: List[str]) -> List[Pipeline]:
-        pipelines = [
+        return [
             pipeline
             for pipeline in self.pipelines.values()
             if pipeline.pipeline_id in pipeline_ids
         ]
-        return pipelines
 
     def get_pipeline(self, pipeline_id: str) -> Pipeline:
         return self.pipelines[pipeline_id]
@@ -143,12 +142,11 @@ class DataPipelineBackend(BaseBackend):
 
     def describe_objects(self, object_ids: List[str], pipeline_id: str) -> List[Any]:
         pipeline = self.get_pipeline(pipeline_id)
-        pipeline_objects = [
+        return [
             pipeline_object
             for pipeline_object in pipeline.objects
             if pipeline_object.object_id in object_ids
         ]
-        return pipeline_objects
 
     def activate_pipeline(self, pipeline_id: str) -> None:
         pipeline = self.get_pipeline(pipeline_id)

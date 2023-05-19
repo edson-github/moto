@@ -68,7 +68,7 @@ class ApplicationAutoscalingBackend(BaseBackend):
         self.ecs_backend = ecs_backends[account_id][region_name]
         self.targets: Dict[str, Dict[str, FakeScalableTarget]] = OrderedDict()
         self.policies: Dict[str, FakeApplicationAutoscalingPolicy] = {}
-        self.scheduled_actions: List[FakeScheduledAction] = list()
+        self.scheduled_actions: List[FakeScheduledAction] = []
 
     @staticmethod
     def default_vpc_endpoint_service(
@@ -96,10 +96,11 @@ class ApplicationAutoscalingBackend(BaseBackend):
         """Flatten scalable targets for a given service namespace down to a list."""
         targets = []
         for dimension in self.targets.keys():
-            for resource_id in self.targets[dimension].keys():
-                targets.append(self.targets[dimension][resource_id])
-        targets = [t for t in targets if t.service_namespace == namespace]
-        return targets
+            targets.extend(
+                self.targets[dimension][resource_id]
+                for resource_id in self.targets[dimension].keys()
+            )
+        return [t for t in targets if t.service_namespace == namespace]
 
     def register_scalable_target(
         self,
@@ -305,7 +306,7 @@ class ApplicationAutoscalingBackend(BaseBackend):
         end_time: str,
         scalable_target_action: str,
     ) -> None:
-        existing_action = next(
+        if existing_action := next(
             (
                 a
                 for a in self.scheduled_actions
@@ -314,8 +315,7 @@ class ApplicationAutoscalingBackend(BaseBackend):
                 and a.scalable_dimension == scalable_dimension
             ),
             None,
-        )
-        if existing_action:
+        ):
             existing_action.update(
                 schedule,
                 timezone,
@@ -387,15 +387,15 @@ def _get_resource_type_from_resource_id(resource_id: str) -> str:
     resource_split = (
         resource_id.split("/") if "/" in resource_id else resource_id.split(":")
     )
-    if (
-        resource_split[0] == "endpoint"
-        or (resource_split[0] == "table" and len(resource_split) > 2)
-        or (resource_split[0] == "keyspace")
-    ):
-        resource_type = resource_split[2]
-    else:
-        resource_type = resource_split[0]
-    return resource_type
+    return (
+        resource_split[2]
+        if (
+            resource_split[0] == "endpoint"
+            or (resource_split[0] == "table" and len(resource_split) > 2)
+            or (resource_split[0] == "keyspace")
+        )
+        else resource_split[0]
+    )
 
 
 class FakeScalableTarget(BaseModel):

@@ -116,11 +116,7 @@ class DynamoDBBackend(BaseBackend):
         else:
             start = 0
 
-        if limit:
-            tables = all_tables[start : start + limit]
-        else:
-            tables = all_tables[start:]
-
+        tables = all_tables[start : start + limit] if limit else all_tables[start:]
         if limit and len(all_tables) > start + limit:
             return tables, tables[-1]
         return tables, None
@@ -179,36 +175,30 @@ class DynamoDBBackend(BaseBackend):
         self, name: str, global_index_updates: List[Dict[str, Any]]
     ) -> Table:
         table = self.tables[name]
-        gsis_by_name = dict((i.name, i) for i in table.global_indexes)
+        gsis_by_name = {i.name: i for i in table.global_indexes}
         for gsi_update in global_index_updates:
             gsi_to_create = gsi_update.get("Create")
             gsi_to_update = gsi_update.get("Update")
-            gsi_to_delete = gsi_update.get("Delete")
-
-            if gsi_to_delete:
+            if gsi_to_delete := gsi_update.get("Delete"):
                 index_name = gsi_to_delete["IndexName"]
                 if index_name not in gsis_by_name:
                     raise ValueError(
-                        "Global Secondary Index does not exist, but tried to delete: %s"
-                        % gsi_to_delete["IndexName"]
+                        f"Global Secondary Index does not exist, but tried to delete: {index_name}"
                     )
-
                 del gsis_by_name[index_name]
 
             if gsi_to_update:
                 index_name = gsi_to_update["IndexName"]
                 if index_name not in gsis_by_name:
                     raise ValueError(
-                        "Global Secondary Index does not exist, but tried to update: %s"
-                        % index_name
+                        f"Global Secondary Index does not exist, but tried to update: {index_name}"
                     )
                 gsis_by_name[index_name].update(gsi_to_update)
 
             if gsi_to_create:
                 if gsi_to_create["IndexName"] in gsis_by_name:
                     raise ValueError(
-                        "Global Secondary Index already exists: %s"
-                        % gsi_to_create["IndexName"]
+                        f'Global Secondary Index already exists: {gsi_to_create["IndexName"]}'
                     )
 
                 gsis_by_name[gsi_to_create["IndexName"]] = GlobalSecondaryIndex.create(
@@ -244,22 +234,20 @@ class DynamoDBBackend(BaseBackend):
         """
         Given a set of keys, extracts the key and range key
         """
-        table = self.tables.get(table_name)
-        if not table:
+        if not (table := self.tables.get(table_name)):
             return None, None
-        else:
-            if len(keys) == 1:
-                for key in keys:
-                    if key in table.hash_key_names:
-                        return key, None
-
-            potential_hash, potential_range = None, None
-            for key in set(keys):
+        if len(keys) == 1:
+            for key in keys:
                 if key in table.hash_key_names:
-                    potential_hash = key
-                elif key in table.range_key_names:
-                    potential_range = key
-            return potential_hash, potential_range
+                    return key, None
+
+        potential_hash, potential_range = None, None
+        for key in set(keys):
+            if key in table.hash_key_names:
+                potential_hash = key
+            elif key in table.range_key_names:
+                potential_range = key
+        return potential_hash, potential_range
 
     def get_keys_value(
         self, table: Table, keys: Dict[str, Any]
@@ -279,18 +267,17 @@ class DynamoDBBackend(BaseBackend):
         self, table_name: str, index_name: Optional[str]
     ) -> List[Dict[str, Any]]:
         table = self.get_table(table_name)
-        if index_name:
-            all_indexes = (table.global_indexes or []) + (table.indexes or [])
-            indexes_by_name = dict((i.name, i) for i in all_indexes)
-            if index_name not in indexes_by_name:
-                all_index_names = ", ".join(indexes_by_name.keys())
-                raise ResourceNotFoundException(
-                    f"Invalid index: {index_name} for table: {table_name}. Available indexes are: {all_index_names}"
-                )
-
-            return indexes_by_name[index_name].schema
-        else:
+        if not index_name:
             return table.schema
+        all_indexes = (table.global_indexes or []) + (table.indexes or [])
+        indexes_by_name = {i.name: i for i in all_indexes}
+        if index_name not in indexes_by_name:
+            all_index_names = ", ".join(indexes_by_name.keys())
+            raise ResourceNotFoundException(
+                f"Invalid index: {index_name} for table: {table_name}. Available indexes are: {all_index_names}"
+            )
+
+        return indexes_by_name[index_name].schema
 
     def get_table(self, table_name: str) -> Table:
         if table_name not in self.tables:
@@ -444,9 +431,7 @@ class DynamoDBBackend(BaseBackend):
                 table.hash_key_attr: {hash_value.type: hash_value.value}
             }
             if range_value:
-                data.update(
-                    {table.range_key_attr: {range_value.type: range_value.value}}  # type: ignore[dict-item]
-                )
+                data[table.range_key_attr] = {range_value.type: range_value.value}
 
             table.put_item(data)
             item = table.get_item(hash_value, range_value)
@@ -531,7 +516,7 @@ class DynamoDBBackend(BaseBackend):
         target_items: Set[Tuple[str, str]] = set()
 
         def check_unicity(table_name: str, key: Dict[str, Any]) -> None:
-            item = (str(table_name), str(key))
+            item = table_name, str(key)
             if item in target_items:
                 raise MultipleTransactionsException()
             target_items.add(item)
@@ -646,7 +631,7 @@ class DynamoDBBackend(BaseBackend):
                 raise MultipleTransactionsException()
             except Exception as e:  # noqa: E722 Do not use bare except
                 errors.append((type(e).__name__, e.message, item))  # type: ignore[attr-defined]
-        if any([code is not None for code, _, _ in errors]):
+        if any(code is not None for code, _, _ in errors):
             # Rollback to the original state, and reraise the errors
             self.tables = original_table_state
             raise TransactionCanceledException(errors)
@@ -783,14 +768,12 @@ class DynamoDBBackend(BaseBackend):
 
         Parsing is highly experimental - please raise an issue if you find any bugs.
         """
-        # We need to execute a statement - but we don't know which table
-        # Just pass all tables to PartiQL
-        source_data: Dict[str, str] = dict()
-        for table in self.tables.values():
-            source_data[table.name] = "\n".join(
+        source_data: Dict[str, str] = {
+            table.name: "\n".join(
                 [json.dumps(item.to_regular_json()) for item in table.all_items()]
             )
-
+            for table in self.tables.values()
+        }
         # Parameters are in DynamoDB JSON form ({"S": "value"}) - we only want the value itself
         parameters = [deserializer.deserialize(param) for param in parameters]
 
@@ -847,12 +830,9 @@ class DynamoDBBackend(BaseBackend):
         for idx, stmt in enumerate(statements):
             if "Error" in responses[idx]:
                 continue
-            items = self.execute_statement(
+            if items := self.execute_statement(
                 statement=stmt["Statement"], parameters=stmt.get("Parameters", [])
-            )
-            # Statements should always contain a HashKey and SortKey
-            # An item with those keys may not exist
-            if items:
+            ):
                 # But if it does, it will always only contain one item at most
                 responses[idx]["Item"] = items[0]
         return responses

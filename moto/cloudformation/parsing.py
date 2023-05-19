@@ -219,9 +219,6 @@ def clean_json(resource_json: Any, resources_map: "ResourceMap") -> Any:
                     )
                 if cleaned_ref is not None:
                     fn_sub_value = fn_sub_value.replace(sub, str(cleaned_ref))
-                else:
-                    # The ref was not found in the template - either it didn't exist, or we couldn't parse it
-                    pass
             for literal in literals:
                 fn_sub_value = fn_sub_value.replace(literal, literal.replace("!", ""))
             return fn_sub_value
@@ -240,10 +237,7 @@ def clean_json(resource_json: Any, resources_map: "ResourceMap") -> Any:
 
         if "Fn::GetAZs" in resource_json:
             region = resource_json.get("Fn::GetAZs") or DEFAULT_REGION
-            result = []
-            # TODO: make this configurable, to reflect the real AWS AZs
-            for az in ("a", "b", "c", "d"):
-                result.append(f"{region}{az}")
+            result = [f"{region}{az}" for az in ("a", "b", "c", "d")]
             return result
 
         if "Fn::ToJsonString" in resource_json:
@@ -289,15 +283,15 @@ def resource_name_property_from_type(resource_type: str) -> Optional[str]:
 
 
 def generate_resource_name(resource_type: str, stack_name: str, logical_id: str) -> str:
-    if resource_type in [
+    if resource_type in {
         "AWS::ElasticLoadBalancingV2::TargetGroup",
         "AWS::ElasticLoadBalancingV2::LoadBalancer",
-    ]:
+    }:
         # Target group names need to be less than 32 characters, so when cloudformation creates a name for you
         # it makes sure to stay under that limit
         name_prefix = f"{stack_name}-{logical_id}"
         my_random_suffix = random_suffix()
-        truncated_name_prefix = name_prefix[0 : 32 - (len(my_random_suffix) + 1)]
+        truncated_name_prefix = name_prefix[:32 - (len(my_random_suffix) + 1)]
         # if the truncated name ends in a dash, we'll end up with a double dash in the final name, which is
         # not allowed
         if truncated_name_prefix.endswith("-"):
@@ -346,8 +340,9 @@ def parse_resource_and_generate_name(
         resource_type, resources_map["AWS::StackName"], logical_id  # type: ignore[arg-type]
     )
 
-    resource_name_property = resource_name_property_from_type(resource_type)
-    if resource_name_property:
+    if resource_name_property := resource_name_property_from_type(
+        resource_type
+    ):
         if (
             "Properties" in resource_json
             and resource_name_property in resource_json["Properties"]
@@ -459,17 +454,13 @@ def parse_condition(condition: Union[Dict[str, Any], bool], resources_map: "Reso
         return not parse_condition(condition_values[0], resources_map, condition_map)
     elif condition_operator == "Fn::And":
         return all(
-            [
-                parse_condition(condition_value, resources_map, condition_map)
-                for condition_value in condition_values
-            ]
+            parse_condition(condition_value, resources_map, condition_map)
+            for condition_value in condition_values
         )
     elif condition_operator == "Fn::Or":
         return any(
-            [
-                parse_condition(condition_value, resources_map, condition_map)
-                for condition_value in condition_values
-            ]
+            parse_condition(condition_value, resources_map, condition_map)
+            for condition_value in condition_values
         )
 
 
@@ -479,12 +470,11 @@ def parse_output(
     output_json = clean_json(output_json, resources_map)
     if "Value" not in output_json:
         return None
-    output = Output(
+    return Output(
         key=output_logical_id,
         value=clean_json(output_json["Value"], resources_map),
         description=output_json.get("Description"),
     )
-    return output
 
 
 class ResourceMap(collections_abc.Mapping):  # type: ignore[type-arg]
@@ -533,21 +523,20 @@ class ResourceMap(collections_abc.Mapping):  # type: ignore[type-arg]
 
         if resource_logical_id in self._parsed_resources:
             return self._parsed_resources[resource_logical_id]
-        else:
-            resource_json = self._resource_json_map.get(resource_logical_id)
+        resource_json = self._resource_json_map.get(resource_logical_id)
 
-            if not resource_json:
-                raise KeyError(resource_logical_id)
-            new_resource = parse_and_create_resource(
-                resource_logical_id,
-                resource_json,
-                self,
-                account_id=self._account_id,
-                region_name=self._region_name,
-            )
-            if new_resource is not None:
-                self._parsed_resources[resource_logical_id] = new_resource
-            return new_resource
+        if not resource_json:
+            raise KeyError(resource_logical_id)
+        new_resource = parse_and_create_resource(
+            resource_logical_id,
+            resource_json,
+            self,
+            account_id=self._account_id,
+            region_name=self._region_name,
+        )
+        if new_resource is not None:
+            self._parsed_resources[resource_logical_id] = new_resource
+        return new_resource
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.resources)
@@ -611,9 +600,7 @@ class ResourceMap(collections_abc.Mapping):  # type: ignore[type-arg]
             value
         )
         actual_value = parameter.value
-        if value_type.find("List") > 0:
-            return actual_value.split(",")
-        return actual_value
+        return actual_value.split(",") if value_type.find("List") > 0 else actual_value
 
     def load_parameters(self) -> None:
         parameter_slots = self._template.get("Parameters", {})
@@ -742,15 +729,13 @@ class ResourceMap(collections_abc.Mapping):  # type: ignore[type-arg]
         old = self._resource_json_map
         new = other_template["Resources"]
 
-        resource_names_by_action = {
+        return {
             "Add": set(new) - set(old),
-            "Modify": set(
+            "Modify": {
                 name for name in new if name in old and new[name] != old[name]
-            ),
+            },
             "Remove": set(old) - set(new),
         }
-
-        return resource_names_by_action
 
     def build_change_set_actions(
         self, template: Dict[str, Any]
@@ -835,11 +820,11 @@ class ResourceMap(collections_abc.Mapping):  # type: ignore[type-arg]
 
     def delete(self) -> None:
         # Only try to delete resources without a Retain DeletionPolicy
-        remaining_resources = set(
+        remaining_resources = {
             key
             for key, value in self._resource_json_map.items()
-            if not value.get("DeletionPolicy") == "Retain"
-        )
+            if value.get("DeletionPolicy") != "Retain"
+        }
         tries = 1
         while remaining_resources and tries < 5:
             for resource in remaining_resources.copy():
@@ -901,21 +886,20 @@ class OutputMap(collections_abc.Mapping):  # type: ignore[type-arg]
 
         # Create the default resources
         self._resource_map = resources
-        self._parsed_outputs: Dict[str, Output] = dict()
+        self._parsed_outputs: Dict[str, Output] = {}
 
     def __getitem__(self, key: str) -> Optional[Output]:
         output_logical_id = key
 
         if output_logical_id in self._parsed_outputs:
             return self._parsed_outputs[output_logical_id]
-        else:
-            output_json = self._output_json_map.get(output_logical_id)
-            new_output = parse_output(
-                output_logical_id, output_json, self._resource_map
-            )
-            if new_output:
-                self._parsed_outputs[output_logical_id] = new_output
-            return new_output
+        output_json = self._output_json_map.get(output_logical_id)
+        new_output = parse_output(
+            output_logical_id, output_json, self._resource_map
+        )
+        if new_output:
+            self._parsed_outputs[output_logical_id] = new_output
+        return new_output
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.outputs)

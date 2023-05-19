@@ -44,7 +44,7 @@ class CallbackResponse(responses.CallbackResponse):
                 content_type=request.headers.get("Content-Type"),
                 method=request.method,
                 base_url=f"{url.scheme}://{url.netloc}",
-                headers=[(k, v) for k, v in request.headers.items()],
+                headers=list(request.headers.items()),
             )
             request = req
         headers = self.get_headers()
@@ -123,13 +123,12 @@ def _find_first_match(
         else:
             match_failed_reasons.append(reason)
 
-    # Look for implemented callbacks first
-    implemented_matches = [
+    if implemented_matches := [
         m
         for m in matches
-        if type(m) is not CallbackResponse or m.callback != not_implemented_callback
-    ]
-    if implemented_matches:
+        if type(m) is not CallbackResponse
+        or m.callback != not_implemented_callback
+    ]:
         return implemented_matches[0], []
     elif matches:
         # We had matches, but all were of type not_implemented_callback

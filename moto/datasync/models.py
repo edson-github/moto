@@ -177,12 +177,11 @@ class DataSyncBackend(BaseBackend):
             raise InvalidRequestException
 
     def update_task(self, task_arn: str, name: str, metadata: Dict[str, Any]) -> None:
-        if task_arn in self.tasks:
-            task = self.tasks[task_arn]
-            task.name = name
-            task.metadata = metadata
-        else:
+        if task_arn not in self.tasks:
             raise InvalidRequestException(f"Sync task {task_arn} is not found.")
+        task = self.tasks[task_arn]
+        task.name = name
+        task.metadata = metadata
 
     def delete_task(self, task_arn: str) -> None:
         if task_arn in self.tasks:

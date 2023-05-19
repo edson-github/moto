@@ -20,7 +20,7 @@ class TagBackend:
         self.tags: Dict[str, Dict[str, str]] = defaultdict(dict)
 
     def create_tags(self, resource_ids: List[str], tags: Dict[str, str]) -> bool:
-        if None in set([tags[tag] for tag in tags]):
+        if None in {tags[tag] for tag in tags}:
             raise InvalidParameterValueErrorTagNull()
         for resource_id in resource_ids:
             if resource_id in self.tags:
@@ -59,18 +59,17 @@ class TagBackend:
             for tag_filter in filters:
                 if tag_filter in self.VALID_TAG_FILTERS:
                     if tag_filter == "key":
-                        for value in filters[tag_filter]:
-                            key_filters.append(
-                                re.compile(simple_aws_filter_to_re(value))
-                            )
+                        key_filters.extend(
+                            re.compile(simple_aws_filter_to_re(value))
+                            for value in filters[tag_filter]
+                        )
                     if tag_filter == "resource-id":
-                        for value in filters[tag_filter]:
-                            resource_id_filters.append(
-                                re.compile(simple_aws_filter_to_re(value))
-                            )
+                        resource_id_filters.extend(
+                            re.compile(simple_aws_filter_to_re(value))
+                            for value in filters[tag_filter]
+                        )
                     if tag_filter == "resource-type":
-                        for value in filters[tag_filter]:
-                            resource_type_filters.append(value)
+                        resource_type_filters.extend(iter(filters[tag_filter]))
                     if tag_filter == "value":
                         for value in filters[tag_filter]:
                             value_filters.append(

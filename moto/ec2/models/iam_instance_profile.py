@@ -76,9 +76,11 @@ class IamInstanceProfileAssociationBackend:
     ) -> Tuple[List[IamInstanceProfileAssociation], Optional[str]]:
         associations_list: List[IamInstanceProfileAssociation] = []
         if association_ids:
-            for association in self.iam_instance_profile_associations.values():
-                if association.id in association_ids:
-                    associations_list.append(association)
+            associations_list.extend(
+                association
+                for association in self.iam_instance_profile_associations.values()
+                if association.id in association_ids
+            )
         else:
             # That's mean that no association id were given. Showing all.
             associations_list.extend(self.iam_instance_profile_associations.values())

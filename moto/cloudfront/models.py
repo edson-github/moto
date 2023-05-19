@@ -181,10 +181,9 @@ class Distribution(BaseModel, ManagedState):
     def random_id(uppercase: bool = True) -> str:
         ascii_set = string.ascii_uppercase if uppercase else string.ascii_lowercase
         chars = list(range(10)) + list(ascii_set)
-        resource_id = random.choice(ascii_set) + "".join(
+        return random.choice(ascii_set) + "".join(
             str(random.choice(chars)) for _ in range(12)
         )
-        return resource_id
 
     def __init__(self, account_id: str, config: Dict[str, Any]):
         # Configured ManagedState
@@ -217,10 +216,9 @@ class Invalidation(BaseModel):
     def random_id(uppercase: bool = True) -> str:
         ascii_set = string.ascii_uppercase if uppercase else string.ascii_lowercase
         chars = list(range(10)) + list(ascii_set)
-        resource_id = random.choice(ascii_set) + "".join(
+        return random.choice(ascii_set) + "".join(
             str(random.choice(chars)) for _ in range(12)
         )
-        return resource_id
 
     def __init__(
         self, distribution: Distribution, paths: Dict[str, Any], caller_ref: str
@@ -235,14 +233,14 @@ class Invalidation(BaseModel):
 
     @property
     def location(self) -> str:
-        return self.distribution.location + f"/invalidation/{self.invalidation_id}"
+        return f"{self.distribution.location}/invalidation/{self.invalidation_id}"
 
 
 class CloudFrontBackend(BaseBackend):
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.distributions: Dict[str, Distribution] = dict()
-        self.invalidations: Dict[str, List[Invalidation]] = dict()
+        self.distributions: Dict[str, Distribution] = {}
+        self.invalidations: Dict[str, List[Invalidation]] = {}
         self.tagger = TaggingService()
 
         state_manager.register_default_transition(

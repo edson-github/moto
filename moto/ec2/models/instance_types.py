@@ -9,7 +9,7 @@ from ..exceptions import InvalidFilter, InvalidInstanceTypeError
 INSTANCE_TYPES: Dict[str, Any] = load_resource(
     __name__, "../resources/instance_types.json"
 )
-INSTANCE_FAMILIES = list(set([i.split(".")[0] for i in INSTANCE_TYPES.keys()]))
+INSTANCE_FAMILIES = list({i.split(".")[0] for i in INSTANCE_TYPES})
 
 root = pathlib.Path(__file__).parent
 offerings_path = "../resources/instance_type_offerings"
@@ -17,7 +17,7 @@ INSTANCE_TYPE_OFFERINGS: Dict[str, Any] = {}
 for _location_type in listdir(root / offerings_path):
     INSTANCE_TYPE_OFFERINGS[_location_type] = {}
     for _region in listdir(root / offerings_path / _location_type):
-        full_path = offerings_path + "/" + _location_type + "/" + _region
+        full_path = f"{offerings_path}/{_location_type}/{_region}"
         res = load_resource(__name__, full_path)
         for instance in res:
             instance["LocationType"] = _location_type  # type: ignore
@@ -146,9 +146,7 @@ class InstanceTypeBackend:
         if instance_types:
             matches = [t for t in matches if t.get("InstanceType") in instance_types]
             if len(instance_types) > len(matches):
-                unknown_ids = set(instance_types) - set(
-                    t.get("InstanceType") for t in matches
-                )
+                unknown_ids = (set(instance_types) - {t.get("InstanceType") for t in matches})
                 raise InvalidInstanceTypeError(
                     unknown_ids, error_type="InvalidInstanceType"
                 )
@@ -176,7 +174,7 @@ class InstanceTypeOfferingBackend:
     ) -> bool:
         def matches_filter(key: str, values: List[str]) -> bool:
             if key == "location":
-                if location_type in ("availability-zone", "availability-zone-id"):
+                if location_type in {"availability-zone", "availability-zone-id"}:
                     return offering.get("Location") in values
                 elif location_type == "region":
                     return any(v for v in values if offering["Location"].startswith(v))
@@ -187,4 +185,4 @@ class InstanceTypeOfferingBackend:
             else:
                 return False
 
-        return all([matches_filter(key, values) for key, values in filters.items()])
+        return all(matches_filter(key, values) for key, values in filters.items())

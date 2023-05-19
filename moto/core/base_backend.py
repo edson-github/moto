@@ -38,10 +38,9 @@ class BaseBackend:
     def _url_module(self) -> Any:  # type: ignore[misc]
         backend_module = self.__class__.__module__
         backend_urls_module_name = backend_module.replace("models", "urls")
-        backend_urls_module = __import__(
+        return __import__(
             backend_urls_module_name, fromlist=["url_bases", "url_paths"]
         )
-        return backend_urls_module
 
     @property
     def urls(self) -> Dict[str, str]:
@@ -111,7 +110,7 @@ class BaseBackend:
         from moto.moto_api._internal import mock_random as random
 
         """Return random number for a VPC endpoint service ID."""
-        return "".join([random.choice(string.hexdigits.lower()) for i in range(17)])
+        return "".join([random.choice(string.hexdigits.lower()) for _ in range(17)])
 
     @staticmethod
     def default_vpc_endpoint_service_factory(  # type: ignore[misc]

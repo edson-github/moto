@@ -30,7 +30,7 @@ def generate_stackset_arn(stackset_id: str, region_name: str, account_id: str) -
 def random_suffix() -> str:
     size = 12
     chars = list(range(10)) + list(string.ascii_uppercase)
-    return "".join(str(random.choice(chars)) for x in range(size))
+    return "".join(str(random.choice(chars)) for _ in range(size))
 
 
 def yaml_tag_constructor(loader: Any, tag: Any, node: Any) -> Any:
@@ -38,19 +38,13 @@ def yaml_tag_constructor(loader: Any, tag: Any, node: Any) -> Any:
 
     def _f(loader: Any, tag: Any, node: Any) -> Any:
         if tag == "!GetAtt":
-            if isinstance(node.value, list):
-                return node.value
-            return node.value.split(".")
+            return node.value if isinstance(node.value, list) else node.value.split(".")
         elif type(node) == yaml.SequenceNode:
             return loader.construct_sequence(node)
         else:
             return node.value
 
-    if tag == "!Ref":
-        key = "Ref"
-    else:
-        key = f"Fn::{tag[1:]}"
-
+    key = "Ref" if tag == "!Ref" else f"Fn::{tag[1:]}"
     return {key: _f(loader, tag, node)}
 
 
@@ -93,18 +87,17 @@ def get_stack_from_s3_url(template_url: str, account_id: str) -> str:
     template_url_parts = urlparse(template_url)
     if "localhost" in template_url:
         bucket_name, key_name = template_url_parts.path.lstrip("/").split("/", 1)
-    else:
-        if template_url_parts.netloc.endswith(
+    elif template_url_parts.netloc.endswith(
             "amazonaws.com"
         ) and template_url_parts.netloc.startswith("s3"):
-            # Handle when S3 url uses amazon url with bucket in path
-            # Also handles getting region as technically s3 is region'd
+        # Handle when S3 url uses amazon url with bucket in path
+        # Also handles getting region as technically s3 is region'd
 
-            # region = template_url.netloc.split('.')[1]
-            bucket_name, key_name = template_url_parts.path.lstrip("/").split("/", 1)
-        else:
-            bucket_name = template_url_parts.netloc.split(".")[0]
-            key_name = template_url_parts.path.lstrip("/")
+        # region = template_url.netloc.split('.')[1]
+        bucket_name, key_name = template_url_parts.path.lstrip("/").split("/", 1)
+    else:
+        bucket_name = template_url_parts.netloc.split(".")[0]
+        key_name = template_url_parts.path.lstrip("/")
 
     key = s3_backends[account_id]["global"].get_object(bucket_name, key_name)
     return key.value.decode("utf-8")

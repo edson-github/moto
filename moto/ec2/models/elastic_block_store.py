@@ -94,12 +94,11 @@ class VolumeAttachment(CloudFormationModel):
         volume_id = properties["VolumeId"]
 
         ec2_backend = ec2_backends[account_id][region_name]
-        attachment = ec2_backend.attach_volume(
+        return ec2_backend.attach_volume(
             volume_id=volume_id,
             instance_id=instance_id,
             device_path=properties["Device"],
         )
-        return attachment
 
 
 class Volume(TaggedEC2Resource, CloudFormationModel):
@@ -164,10 +163,10 @@ class Volume(TaggedEC2Resource, CloudFormationModel):
         properties = cloudformation_json["Properties"]
 
         ec2_backend = ec2_backends[account_id][region_name]
-        volume = ec2_backend.create_volume(
-            size=properties.get("Size"), zone_name=properties.get("AvailabilityZone")
+        return ec2_backend.create_volume(
+            size=properties.get("Size"),
+            zone_name=properties.get("AvailabilityZone"),
         )
-        return volume
 
     @property
     def physical_resource_id(self) -> str:
@@ -175,10 +174,7 @@ class Volume(TaggedEC2Resource, CloudFormationModel):
 
     @property
     def status(self) -> str:
-        if self.attachment:
-            return "in-use"
-        else:
-            return "available"
+        return "in-use" if self.attachment else "available"
 
     def get_filter_value(
         self, filter_name: str, method_name: Optional[str] = None
@@ -277,13 +273,16 @@ class EBSBackend:
             raise InvalidParameterDependency("KmsKeyId", "Encrypted")
         if encrypted and not kms_key_id:
             kms_key_id = self._get_default_encryption_key()
-        if volume_type in IOPS_REQUIRED_VOLUME_TYPES and not iops:
+        if (
+            volume_type in IOPS_REQUIRED_VOLUME_TYPES
+            and not iops
+            or (volume_type != "gp3" or iops)
+            and volume_type not in IOPS_SUPPORTED_VOLUME_TYPES
+            and iops
+        ):
             raise InvalidParameterDependency("VolumeType", "Iops")
         elif volume_type == "gp3" and not iops:
             iops = GP3_DEFAULT_IOPS
-        elif volume_type not in IOPS_SUPPORTED_VOLUME_TYPES and iops:
-            raise InvalidParameterDependency("VolumeType", "Iops")
-
         volume_id = random_volume_id()
         zone = self.get_zone_by_name(zone_name)  # type: ignore[attr-defined]
         if snapshot_id:
@@ -341,10 +340,10 @@ class EBSBackend:
         return modifications
 
     def get_volume(self, volume_id: str) -> Volume:
-        volume = self.volumes.get(volume_id, None)
-        if not volume:
+        if volume := self.volumes.get(volume_id, None):
+            return volume
+        else:
             raise InvalidVolumeIdError(volume_id)
-        return volume
 
     def delete_volume(self, volume_id: str) -> Volume:
         if volume_id in self.volumes:
@@ -476,10 +475,10 @@ class EBSBackend:
         return snapshot
 
     def get_snapshot(self, snapshot_id: str) -> Snapshot:
-        snapshot = self.snapshots.get(snapshot_id, None)
-        if not snapshot:
+        if snapshot := self.snapshots.get(snapshot_id, None):
+            return snapshot
+        else:
             raise InvalidSnapshotIdError()
-        return snapshot
 
     def delete_snapshot(self, snapshot_id: str) -> Snapshot:
         if snapshot_id in self.snapshots:  # type: ignore[attr-defined]

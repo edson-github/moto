@@ -39,14 +39,10 @@ def filter_tasks(tasks: Iterable[Any], filters: List[Dict[str, Any]]) -> Any:
     matching_tasks = tasks
 
     for f in filters:
-        filter_function = task_filter_functions.get(f["Name"])
-
-        if not filter_function:
-            continue
-
-        # https://github.com/python/mypy/issues/12682
-        matching_tasks = filter(
-            lambda task: filter_function(task, f["Values"]), matching_tasks  # type: ignore[arg-type]
-        )
+        if filter_function := task_filter_functions.get(f["Name"]):
+            # https://github.com/python/mypy/issues/12682
+            matching_tasks = filter(
+                lambda task: filter_function(task, f["Values"]), matching_tasks  # type: ignore[arg-type]
+            )
 
     return matching_tasks

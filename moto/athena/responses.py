@@ -18,20 +18,20 @@ class AthenaResponse(BaseResponse):
         description = self._get_param("Description")
         configuration = self._get_param("Configuration")
         tags = self._get_param("Tags")
-        work_group = self.athena_backend.create_work_group(
+        if work_group := self.athena_backend.create_work_group(
             name, configuration, description, tags
-        )
-        if not work_group:
-            return self.error("WorkGroup already exists", 400)
-        return json.dumps(
-            {
-                "CreateWorkGroupResponse": {
-                    "ResponseMetadata": {
-                        "RequestId": "384ac68d-3775-11df-8963-01868b7c937a"
+        ):
+            return json.dumps(
+                {
+                    "CreateWorkGroupResponse": {
+                        "ResponseMetadata": {
+                            "RequestId": "384ac68d-3775-11df-8963-01868b7c937a"
+                        }
                     }
                 }
-            }
-        )
+            )
+        else:
+            return self.error("WorkGroup already exists", 400)
 
     def list_work_groups(self) -> str:
         return json.dumps({"WorkGroups": self.athena_backend.list_work_groups()})
@@ -86,7 +86,7 @@ class AthenaResponse(BaseResponse):
 
     def list_query_executions(self) -> str:
         executions = self.athena_backend.list_query_executions()
-        return json.dumps({"QueryExecutionIds": [i for i in executions.keys()]})
+        return json.dumps({"QueryExecutionIds": list(executions.keys())})
 
     def stop_query_execution(self) -> str:
         exec_id = self._get_param("QueryExecutionId")
@@ -143,20 +143,20 @@ class AthenaResponse(BaseResponse):
         description = self._get_param("Description")
         parameters = self._get_param("Parameters")
         tags = self._get_param("Tags")
-        data_catalog = self.athena_backend.create_data_catalog(
+        if data_catalog := self.athena_backend.create_data_catalog(
             name, catalog_type, description, parameters, tags
-        )
-        if not data_catalog:
-            return self.error("DataCatalog already exists", 400)
-        return json.dumps(
-            {
-                "CreateDataCatalogResponse": {
-                    "ResponseMetadata": {
-                        "RequestId": "384ac68d-3775-11df-8963-01868b7c937a"
+        ):
+            return json.dumps(
+                {
+                    "CreateDataCatalogResponse": {
+                        "ResponseMetadata": {
+                            "RequestId": "384ac68d-3775-11df-8963-01868b7c937a"
+                        }
                     }
                 }
-            }
-        )
+            )
+        else:
+            return self.error("DataCatalog already exists", 400)
 
     def list_named_queries(self) -> str:
         next_token = self._get_param("NextToken")
@@ -180,7 +180,7 @@ class AthenaResponse(BaseResponse):
             query_statement=query_statement,
             description=description,
         )
-        return json.dumps(dict())
+        return json.dumps({})
 
     def get_prepared_statement(self) -> str:
         statement_name = self._get_param("StatementName")

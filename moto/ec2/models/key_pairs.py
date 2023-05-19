@@ -61,10 +61,7 @@ class KeyPairBackend:
         else:
             results = list(self.keypairs.values())
 
-        if filters:
-            return generic_filter(filters, results)
-        else:
-            return results
+        return generic_filter(filters, results) if filters else results
 
     def import_key_pair(self, key_name: str, public_key_material: str) -> KeyPair:
         if key_name in self.keypairs:

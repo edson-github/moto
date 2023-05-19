@@ -49,12 +49,12 @@ class PrometheusServiceResponse(BaseResponse):
         alias = params.get("alias")
         workspace_id = self.path.split("/")[-2]
         self.amp_backend.update_workspace_alias(alias=alias, workspace_id=workspace_id)
-        return json.dumps(dict())
+        return json.dumps({})
 
     def delete_workspace(self) -> str:
         workspace_id = self.path.split("/")[-1]
         self.amp_backend.delete_workspace(workspace_id=workspace_id)
-        return json.dumps(dict())
+        return json.dumps({})
 
     def list_workspaces(self) -> str:
         alias = self._get_param("alias")
@@ -72,13 +72,13 @@ class PrometheusServiceResponse(BaseResponse):
         resource_arn = unquote(self.path).split("tags/")[-1]
         tags = params.get("tags")
         self.amp_backend.tag_resource(resource_arn=resource_arn, tags=tags)
-        return json.dumps(dict())
+        return json.dumps({})
 
     def untag_resource(self) -> str:
         resource_arn = unquote(self.path).split("tags/")[-1]
         tag_keys = self.querystring.get("tagKeys", [])
         self.amp_backend.untag_resource(resource_arn=resource_arn, tag_keys=tag_keys)
-        return json.dumps(dict())
+        return json.dumps({})
 
     def create_rule_groups_namespace(self) -> str:
         params = json.loads(self.body)
@@ -101,7 +101,7 @@ class PrometheusServiceResponse(BaseResponse):
             name=name,
             workspace_id=workspace_id,
         )
-        return json.dumps(dict())
+        return json.dumps({})
 
     def describe_rule_groups_namespace(self) -> str:
         name = unquote(self.path).split("/")[-1]

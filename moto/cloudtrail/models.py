@@ -105,9 +105,9 @@ class Trail(BaseModel):
         self.check_bucket_exists()
         self.check_topic_exists()
         self.status = TrailStatus()
-        self.event_selectors: List[Dict[str, Any]] = list()
-        self.advanced_event_selectors: List[Dict[str, Any]] = list()
-        self.insight_selectors: List[Dict[str, str]] = list()
+        self.event_selectors: List[Dict[str, Any]] = []
+        self.advanced_event_selectors: List[Dict[str, Any]] = []
+        self.insight_selectors: List[Dict[str, str]] = []
 
     @property
     def arn(self) -> str:
@@ -250,7 +250,7 @@ class CloudTrailBackend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.trails: Dict[str, Trail] = dict()
+        self.trails: Dict[str, Trail] = {}
         self.tagging_service = TaggingService(tag_name="TagsList")
 
     def create_trail(
@@ -322,9 +322,12 @@ class CloudTrailBackend(BaseBackend):
         if include_shadow_trails:
             current_account = cloudtrail_backends[self.account_id]
             for backend in current_account.values():
-                for trail in backend.trails.values():
-                    if trail.is_multi_region or trail.region_name == self.region_name:
-                        all_trails.append(trail)
+                all_trails.extend(
+                    trail
+                    for trail in backend.trails.values()
+                    if trail.is_multi_region
+                    or trail.region_name == self.region_name
+                )
         else:
             all_trails.extend(self.trails.values())
         return all_trails

@@ -44,4 +44,4 @@ url_paths = {
 }
 
 # Also manages the APIGatewayV2
-url_paths.update(url_paths_v2)
+url_paths |= url_paths_v2

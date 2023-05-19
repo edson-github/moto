@@ -60,14 +60,8 @@ class FakeLifeCycleHook(BaseModel):
         self.as_name = as_name
         if transition:
             self.transition = transition
-        if timeout:
-            self.timeout = timeout
-        else:
-            self.timeout = 3600
-        if result:
-            self.result = result
-        else:
-            self.result = "ABANDON"
+        self.timeout = timeout if timeout else 3600
+        self.result = result if result else "ABANDON"
 
 
 class FakeScalingPolicy(BaseModel):
@@ -94,10 +88,7 @@ class FakeScalingPolicy(BaseModel):
         self.as_name = as_name
         self.min_adjustment_magnitude = min_adjustment_magnitude
         self.scaling_adjustment = scaling_adjustment
-        if cooldown is not None:
-            self.cooldown = cooldown
-        else:
-            self.cooldown = DEFAULT_COOLDOWN
+        self.cooldown = cooldown if cooldown is not None else DEFAULT_COOLDOWN
         self.target_tracking_config = target_tracking_config
         self.step_adjustments = step_adjustments
         self.estimated_instance_warmup = estimated_instance_warmup
@@ -175,7 +166,7 @@ class FakeLaunchConfiguration(CloudFormationModel):
         cls, name: str, instance: Instance, backend: "AutoScalingBackend"
     ) -> "FakeLaunchConfiguration":
         security_group_names = [sg.name for sg in instance.security_groups]
-        config = backend.create_launch_configuration(
+        return backend.create_launch_configuration(
             name=name,
             image_id=instance.image_id,
             kernel_id="",
@@ -192,7 +183,6 @@ class FakeLaunchConfiguration(CloudFormationModel):
             # We expect a dictionary in the same format as when the user calls it
             block_device_mappings=instance.block_device_mapping.to_source_dict(),
         )
-        return config
 
     @staticmethod
     def cloudformation_name_type() -> str:
@@ -217,7 +207,7 @@ class FakeLaunchConfiguration(CloudFormationModel):
         instance_profile_name = properties.get("IamInstanceProfile")
 
         backend = autoscaling_backends[account_id][region_name]
-        config = backend.create_launch_configuration(
+        return backend.create_launch_configuration(
             name=resource_name,
             image_id=properties.get("ImageId"),
             kernel_id=properties.get("KernelId"),
@@ -233,7 +223,6 @@ class FakeLaunchConfiguration(CloudFormationModel):
             associate_public_ip_address=properties.get("AssociatePublicIpAddress"),
             block_device_mappings=properties.get("BlockDeviceMapping.member"),
         )
-        return config
 
     @classmethod
     def update_from_cloudformation_json(  # type: ignore[misc]
@@ -282,9 +271,7 @@ class FakeLaunchConfiguration(CloudFormationModel):
 
     @property
     def instance_monitoring_enabled(self) -> str:
-        if self.instance_monitoring:
-            return "true"
-        return "false"
+        return "true" if self.instance_monitoring else "false"
 
     def _parse_block_device_mappings(self) -> BlockDeviceMapping:
         block_device_map = BlockDeviceMapping()
@@ -359,7 +346,7 @@ class FakeScheduledAction(CloudFormationModel):
             else "ScheduledScalingAction-{random.randint(0,100)}"
         )
 
-        scheduled_action = backend.put_scheduled_update_group_action(
+        return backend.put_scheduled_update_group_action(
             name=properties.get("AutoScalingGroupName"),
             desired_capacity=properties.get("DesiredCapacity"),
             max_size=properties.get("MaxSize"),
@@ -369,7 +356,6 @@ class FakeScheduledAction(CloudFormationModel):
             end_time=properties.get("EndTime"),
             recurrence=properties.get("Recurrence"),
         )
-        return scheduled_action
 
 
 def set_string_propagate_at_launch_booleans_on_tags(
@@ -529,7 +515,7 @@ class FakeAutoScalingGroup(CloudFormationModel):
                     launch_template.get("version") or "$Default"
                 )
                 self.provided_launch_template_version = launch_template.get("version")
-            elif mixed_instance_policy:
+            else:
                 spec = mixed_instance_policy["LaunchTemplate"][
                     "LaunchTemplateSpecification"
                 ]
@@ -548,7 +534,7 @@ class FakeAutoScalingGroup(CloudFormationModel):
                 self.launch_template = self.ec2_backend.get_launch_template(
                     launch_template_id
                 )
-            elif launch_template_name:
+            else:
                 self.launch_template = self.ec2_backend.get_launch_template_by_name(
                     launch_template_name
                 )
@@ -582,7 +568,7 @@ class FakeAutoScalingGroup(CloudFormationModel):
         target_group_arns = properties.get("TargetGroupARNs", [])
 
         backend = autoscaling_backends[account_id][region_name]
-        group = backend.create_auto_scaling_group(
+        return backend.create_auto_scaling_group(
             name=resource_name,
             availability_zones=properties.get("AvailabilityZones", []),
             desired_capacity=properties.get("DesiredCapacity"),
@@ -607,7 +593,6 @@ class FakeAutoScalingGroup(CloudFormationModel):
                 "NewInstancesProtectedFromScaleIn", False
             ),
         )
-        return group
 
     @classmethod
     def update_from_cloudformation_json(  # type: ignore[misc]
@@ -722,30 +707,25 @@ class FakeAutoScalingGroup(CloudFormationModel):
             self.set_desired_capacity(desired_capacity)
 
     def set_desired_capacity(self, new_capacity: Optional[int]) -> None:
-        if new_capacity is None:
-            self.desired_capacity = self.min_size
-        else:
-            self.desired_capacity = new_capacity
-
+        self.desired_capacity = self.min_size if new_capacity is None else new_capacity
         curr_instance_count = len(self.active_instances())
 
         if self.desired_capacity == curr_instance_count:
             pass  # Nothing to do here
         elif self.desired_capacity > curr_instance_count:  # type: ignore[operator]
             # Need more instances
-            count_needed = int(self.desired_capacity) - int(curr_instance_count)  # type: ignore[arg-type]
+            count_needed = int(self.desired_capacity) - curr_instance_count
 
             propagated_tags = self.get_propagated_tags()
             self.replace_autoscaling_group_instances(count_needed, propagated_tags)
         else:
             # Need to remove some instances
             count_to_remove = curr_instance_count - self.desired_capacity  # type: ignore[operator]
-            instances_to_remove = [  # only remove unprotected
+            if instances_to_remove := [  # only remove unprotected
                 state
                 for state in self.instance_states
                 if not state.protected_from_scale_in
-            ][:count_to_remove]
-            if instances_to_remove:  # just in case not instances to remove
+            ][:count_to_remove]:
                 instance_ids_to_remove = [
                     instance.instance.id for instance in instances_to_remove
                 ]
@@ -866,9 +846,6 @@ class AutoScalingBackend(BaseBackend):
             raise ValidationError(
                 "Valid requests must contain either the InstanceID parameter or both the ImageId and InstanceType parameters."
             )
-        if instance_id is not None:
-            # TODO: https://docs.aws.amazon.com/autoscaling/ec2/userguide/create-lc-with-instanceID.html
-            pass
         launch_configuration = FakeLaunchConfiguration(
             name=name,
             image_id=image_id,
@@ -963,10 +940,9 @@ class AutoScalingBackend(BaseBackend):
     def delete_scheduled_action(
         self, auto_scaling_group_name: str, scheduled_action_name: str
     ) -> None:
-        scheduled_action = self.describe_scheduled_actions(
+        if scheduled_action := self.describe_scheduled_actions(
             auto_scaling_group_name, [scheduled_action_name]
-        )
-        if scheduled_action:
+        ):
             self.scheduled_actions.pop(scheduled_action_name, None)
 
     def create_auto_scaling_group(
@@ -1004,7 +980,7 @@ class AutoScalingBackend(BaseBackend):
             instance_id,
             mixed_instance_policy,
         ]
-        num_params = sum([1 for param in params if param])
+        num_params = sum(1 for param in params if param)
 
         if num_params != 1:
             raise ValidationError(
@@ -1124,25 +1100,24 @@ class AutoScalingBackend(BaseBackend):
         group = self.autoscaling_groups[group_name]
         original_size = len(group.instance_states)
 
-        if (original_size + len(instance_ids)) > group.max_size:  # type: ignore[operator]
+        if (original_size + len(instance_ids)) > group.max_size:
             raise ResourceContentionError
-        else:
-            group.desired_capacity = original_size + len(instance_ids)
-            new_instances = [
-                InstanceState(
-                    self.ec2_backend.get_instance(x),
-                    protected_from_scale_in=group.new_instances_protected_from_scale_in,
-                    autoscaling_group=group,
-                )
-                for x in instance_ids
-            ]
-            for instance in new_instances:
-                self.ec2_backend.create_tags(
-                    [instance.instance.id], {ASG_NAME_TAG: group.name}
-                )
-            group.instance_states.extend(new_instances)
-            self.update_attached_elbs(group.name)
-            self.update_attached_target_groups(group.name)
+        group.desired_capacity = original_size + len(instance_ids)
+        new_instances = [
+            InstanceState(
+                self.ec2_backend.get_instance(x),
+                protected_from_scale_in=group.new_instances_protected_from_scale_in,
+                autoscaling_group=group,
+            )
+            for x in instance_ids
+        ]
+        for instance in new_instances:
+            self.ec2_backend.create_tags(
+                [instance.instance.id], {ASG_NAME_TAG: group.name}
+            )
+        group.instance_states.extend(new_instances)
+        self.update_attached_elbs(group.name)
+        self.update_attached_target_groups(group.name)
 
     def set_instance_health(self, instance_id: str, health_status: str) -> None:
         """
@@ -1299,9 +1274,7 @@ class AutoScalingBackend(BaseBackend):
 
     def update_attached_elbs(self, group_name: str) -> None:
         group = self.autoscaling_groups[group_name]
-        group_instance_ids = set(
-            state.instance.id for state in group.active_instances()
-        )
+        group_instance_ids = {state.instance.id for state in group.active_instances()}
 
         # skip this if group.load_balancers is empty
         # otherwise elb_backend.describe_load_balancers returns all available load balancers
@@ -1324,7 +1297,7 @@ class AutoScalingBackend(BaseBackend):
 
     def update_attached_target_groups(self, group_name: str) -> None:
         group = self.autoscaling_groups[group_name]
-        group_instance_ids = set(state.instance.id for state in group.instance_states)
+        group_instance_ids = {state.instance.id for state in group.instance_states}
 
         # no action necessary if target_group_arns is empty
         if not group.target_group_arns:
@@ -1357,7 +1330,7 @@ class AutoScalingBackend(BaseBackend):
                     new_tags.append(old_tag)
 
             # if key was never in old_tag's add it (create tag)
-            if not any(new_tag["key"] == tag["key"] for new_tag in new_tags):
+            if all(new_tag["key"] != tag["key"] for new_tag in new_tags):
                 new_tags.append(tag)
 
             group.tags = new_tags
@@ -1386,7 +1359,7 @@ class AutoScalingBackend(BaseBackend):
         self, group_name: str, load_balancer_names: List[str]
     ) -> None:
         group = self.autoscaling_groups[group_name]
-        group_instance_ids = set(state.instance.id for state in group.instance_states)
+        group_instance_ids = {state.instance.id for state in group.instance_states}
         elbs = self.elb_backend.describe_load_balancers(names=group.load_balancers)
         for elb in elbs:
             self.elb_backend.deregister_instances(

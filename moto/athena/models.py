@@ -162,7 +162,7 @@ class AthenaBackend(BaseBackend):
 
         # Initialise with the primary workgroup
         self.create_work_group(
-            name="primary", description="", configuration=dict(), tags=[]
+            name="primary", description="", configuration={}, tags=[]
         )
 
     @staticmethod
@@ -273,12 +273,11 @@ class AthenaBackend(BaseBackend):
         """
         if exec_id not in self.query_results and self.query_results_queue:
             self.query_results[exec_id] = self.query_results_queue.pop(0)
-        results = (
+        return (
             self.query_results[exec_id]
             if exec_id in self.query_results
             else QueryResults(rows=[], column_info=[])
         )
-        return results
 
     def stop_query_execution(self, exec_id: str) -> None:
         execution = self.executions[exec_id]
@@ -340,10 +339,11 @@ class AthenaBackend(BaseBackend):
 
     @paginate(pagination_model=PAGINATION_MODEL)  # type: ignore
     def list_named_queries(self, work_group: str) -> List[str]:  # type: ignore[misc]
-        named_query_ids = [
-            q.id for q in self.named_queries.values() if q.workgroup.name == work_group
+        return [
+            q.id
+            for q in self.named_queries.values()
+            if q.workgroup.name == work_group
         ]
-        return named_query_ids
 
     def create_prepared_statement(
         self,

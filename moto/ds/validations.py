@@ -36,8 +36,7 @@ def validate_args(validators: Any) -> None:
     # This eventually could be a switch (python 3.10), elminating the need
     # for the above map and individual functions.
     for (fieldname, value) in validators:
-        msg = validation_map[fieldname](value)
-        if msg:
+        if msg := validation_map[fieldname](value):
             err_msgs.append((fieldname, value, msg))
     if err_msgs:
         raise DsValidationException(err_msgs)
@@ -75,10 +74,14 @@ def validate_dns_ips(value: str) -> str:
         r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
         r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
     )
-    for dnsip in value:
-        if not re.match(dnsip_pattern, dnsip):
-            return rf"satisfy regular expression pattern: {dnsip_pattern}"
-    return ""
+    return next(
+        (
+            f"satisfy regular expression pattern: {dnsip_pattern}"
+            for dnsip in value
+            if not re.match(dnsip_pattern, dnsip)
+        ),
+        "",
+    )
 
 
 def validate_edition(value: str) -> str:
@@ -134,10 +137,14 @@ def validate_sso_password(value: str) -> str:
 def validate_subnet_ids(value: str) -> str:
     """Raise exception is subnet IDs fail to match constraints."""
     subnet_id_pattern = r"^(subnet-[0-9a-f]{8}|subnet-[0-9a-f]{17})$"
-    for subnet in value:
-        if not re.match(subnet_id_pattern, subnet):
-            return rf"satisfy regular expression pattern: {subnet_id_pattern}"
-    return ""
+    return next(
+        (
+            f"satisfy regular expression pattern: {subnet_id_pattern}"
+            for subnet in value
+            if not re.match(subnet_id_pattern, subnet)
+        ),
+        "",
+    )
 
 
 def validate_user_name(value: str) -> str:

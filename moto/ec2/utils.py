@@ -60,8 +60,8 @@ EC2_RESOURCE_TO_PREFIX = {
 }
 
 
-EC2_PREFIX_TO_RESOURCE = dict((v, k) for (k, v) in EC2_RESOURCE_TO_PREFIX.items())
-HEX_CHARS = list(str(x) for x in range(10)) + ["a", "b", "c", "d", "e", "f"]
+EC2_PREFIX_TO_RESOURCE = {v: k for (k, v) in EC2_RESOURCE_TO_PREFIX.items()}
+HEX_CHARS = [str(x) for x in range(10)] + ["a", "b", "c", "d", "e", "f"]
 
 
 def random_resource_id(size: int = 8) -> str:
@@ -319,10 +319,9 @@ def get_attribute_value(
     parameter: str, querystring_dict: Dict[str, List[str]]
 ) -> Union[None, bool, str]:
     for key, value in querystring_dict.items():
-        match = re.search(rf"{parameter}.Value", key)
-        if match:
+        if match := re.search(rf"{parameter}.Value", key):
             if value[0].lower() in ["true", "false"]:
-                return True if value[0].lower() in ["true"] else False
+                return value[0].lower() in ["true"]
             return value[0]
     return None
 
@@ -337,8 +336,7 @@ def get_object_value(obj: Any, attr: str) -> Any:
             val = val[key]
         elif isinstance(val, list):
             for item in val:
-                item_val = get_object_value(item, key)
-                if item_val:
+                if item_val := get_object_value(item, key):
                     return item_val
         elif key == "owner_id" and hasattr(val, "account_id"):
             val = getattr(val, "account_id")
@@ -357,20 +355,20 @@ def is_tag_filter(filter_name: str) -> bool:
 
 def get_obj_tag(obj: Any, filter_name: str) -> Optional[str]:
     tag_name = filter_name.replace("tag:", "", 1)
-    tags = dict((tag["key"], tag["value"]) for tag in obj.get_tags())
+    tags = {tag["key"]: tag["value"] for tag in obj.get_tags()}
     return tags.get(tag_name)
 
 
 def get_obj_tag_names(obj: Any) -> Set[str]:
-    tags = set((tag["key"] for tag in obj.get_tags()))
-    return tags
+    return {tag["key"] for tag in obj.get_tags()}
 
 
 def get_obj_tag_values(obj: Any, key: Optional[str] = None) -> Set[str]:
-    tags = set(
-        (tag["value"] for tag in obj.get_tags() if tag["key"] == key or key is None)
-    )
-    return tags
+    return {
+        tag["value"]
+        for tag in obj.get_tags()
+        if tag["key"] == key or key is None
+    }
 
 
 def add_tag_specification(tags: Any) -> Dict[str, str]:
@@ -438,8 +436,7 @@ def passes_filter_dict(instance: Any, filter_dict: Dict[str, Any]) -> bool:
                 return False
         else:
             raise NotImplementedError(
-                "Filter dicts have not been implemented in Moto for '%s' yet. Feel free to open an issue at https://github.com/getmoto/moto/issues"
-                % filter_name
+                f"Filter dicts have not been implemented in Moto for '{filter_name}' yet. Feel free to open an issue at https://github.com/getmoto/moto/issues"
             )
     return True
 
@@ -461,11 +458,11 @@ def filter_reservations(
 ) -> List[FILTER_TYPE]:
     result = []
     for reservation in reservations:
-        new_instances = []
-        for instance in reservation.instances:  # type: ignore[attr-defined]
-            if passes_filter_dict(instance, filter_dict):
-                new_instances.append(instance)
-        if new_instances:
+        if new_instances := [
+            instance
+            for instance in reservation.instances
+            if passes_filter_dict(instance, filter_dict)
+        ]:
             reservation.instances = new_instances  # type: ignore[attr-defined]
             result.append(reservation)
     return result
@@ -498,11 +495,7 @@ def passes_igw_filter_dict(igw: Any, filter_dict: Dict[str, Any]) -> bool:
 def filter_internet_gateways(
     igws: List[FILTER_TYPE], filter_dict: Any
 ) -> List[FILTER_TYPE]:
-    result = []
-    for igw in igws:
-        if passes_igw_filter_dict(igw, filter_dict):
-            result.append(igw)
-    return result
+    return [igw for igw in igws if passes_igw_filter_dict(igw, filter_dict)]
 
 
 def is_filter_matching(obj: Any, _filter: str, filter_value: Any) -> bool:
@@ -514,10 +507,7 @@ def is_filter_matching(obj: Any, _filter: str, filter_value: Any) -> bool:
     if isinstance(value, str):
         if not isinstance(filter_value, list):
             filter_value = [filter_value]
-        if any(fnmatch.fnmatch(value, pattern) for pattern in filter_value):
-            return True
-        return False
-
+        return any((fnmatch.fnmatch(value, pattern) for pattern in filter_value))
     if isinstance(value, type({}.keys())):
         if isinstance(filter_value, str) and filter_value in value:
             return True
@@ -548,8 +538,7 @@ def generic_filter(
 def simple_aws_filter_to_re(filter_string: str) -> str:
     tmp_filter = filter_string.replace(r"\?", "[?]")
     tmp_filter = tmp_filter.replace(r"\*", "[*]")
-    tmp_filter = fnmatch.translate(tmp_filter)
-    return tmp_filter
+    return fnmatch.translate(tmp_filter)
 
 
 def random_key_pair() -> Dict[str, str]:
@@ -625,7 +614,7 @@ def generate_instance_identity_document(instance: Any) -> Dict[str, Any]:
     new ContainerInstance
     """
 
-    document = {
+    return {
         "devPayProductCodes": None,
         "availabilityZone": instance.placement["AvailabilityZone"],
         "privateIp": instance.private_ip_address,
@@ -641,8 +630,6 @@ def generate_instance_identity_document(instance: Any) -> Dict[str, Any]:
         "ramdiskId": instance.ramdisk_id,
         "architecture": instance.architecture,
     }
-
-    return document
 
 
 def rsa_public_key_parse(key_material: Any) -> Any:
@@ -671,8 +658,7 @@ def rsa_public_key_fingerprint(rsa_public_key: Any) -> str:
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     fingerprint_hex = md5_hash(key_data).hexdigest()
-    fingerprint = re.sub(r"([a-f0-9]{2})(?!$)", r"\1:", fingerprint_hex)
-    return fingerprint
+    return re.sub(r"([a-f0-9]{2})(?!$)", r"\1:", fingerprint_hex)
 
 
 def filter_iam_instance_profile_associations(
@@ -732,19 +718,15 @@ def describe_tag_filter(
     for instance in instances:
         for key in filters:
             if key.startswith("tag:"):
-                match = re.match(r"tag:(.*)", key)
-                if match:
-                    tag_key_name = match.group(1)
+                if match := re.match(r"tag:(.*)", key):
+                    tag_key_name = match[1]
                     need_delete = True
                     for tag in instance.get_tags():  # type: ignore[attr-defined]
-                        if tag.get("key") == tag_key_name and tag.get(
-                            "value"
-                        ) in filters.get(key):
-                            need_delete = False
-                        elif tag.get("key") == tag_key_name and tag.get(
-                            "value"
-                        ) not in filters.get(key):
-                            need_delete = True
+                        if tag.get("key") == tag_key_name:
+                            if tag.get("value") in filters.get(key):
+                                need_delete = False
+                            elif tag.get("value") not in filters.get(key):
+                                need_delete = True
                     if need_delete:
                         result.remove(instance)
     return result

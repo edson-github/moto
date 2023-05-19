@@ -39,41 +39,42 @@ class Node(metaclass=abc.ABCMeta):
         """
         Flatten the Add-/Delete-/Remove-/Set-Action children within this Node
         """
-        if self.type == "UpdateExpression":
-            # We can have multiple REMOVE attr[idx] expressions, such as attr[i] and attr[i+2]
-            # If we remove attr[i] first, attr[i+2] suddenly refers to a different item
-            # So we sort them in reverse order - we can remove attr[i+2] first, attr[i] still refers to the same item
+        if self.type != "UpdateExpression":
+            return
+        # We can have multiple REMOVE attr[idx] expressions, such as attr[i] and attr[i+2]
+        # If we remove attr[i] first, attr[i+2] suddenly refers to a different item
+        # So we sort them in reverse order - we can remove attr[i+2] first, attr[i] still refers to the same item
 
-            # Behaviour that is unknown, for now:
-            # What happens if we SET and REMOVE on the same list - what takes precedence?
-            # We're assuming this is executed in original order
+        # Behaviour that is unknown, for now:
+        # What happens if we SET and REMOVE on the same list - what takes precedence?
+        # We're assuming this is executed in original order
 
-            remove_actions = []
-            sorted_actions = []
-            possible_clauses = [
-                UpdateExpressionAddAction,
-                UpdateExpressionDeleteAction,
-                UpdateExpressionRemoveAction,
-                UpdateExpressionSetAction,
-            ]
-            for action in self.find_clauses(possible_clauses):
-                if isinstance(action, UpdateExpressionRemoveAction):
-                    # Keep these separate for now
-                    remove_actions.append(action)
-                else:
-                    if len(remove_actions) > 0:
-                        # Remove-actions were found earlier
-                        # Now that we have other action-types, that means we've found all possible Remove-actions
-                        # Sort them appropriately
-                        sorted_actions.extend(sorted(remove_actions, reverse=True))
-                        remove_actions.clear()
-                    # Add other actions by insertion order
-                    sorted_actions.append(action)
+        remove_actions = []
+        sorted_actions = []
+        possible_clauses = [
+            UpdateExpressionAddAction,
+            UpdateExpressionDeleteAction,
+            UpdateExpressionRemoveAction,
+            UpdateExpressionSetAction,
+        ]
+        for action in self.find_clauses(possible_clauses):
+            if isinstance(action, UpdateExpressionRemoveAction):
+                # Keep these separate for now
+                remove_actions.append(action)
+            else:
+                if remove_actions:
+                    # Remove-actions were found earlier
+                    # Now that we have other action-types, that means we've found all possible Remove-actions
+                    # Sort them appropriately
+                    sorted_actions.extend(sorted(remove_actions, reverse=True))
+                    remove_actions.clear()
+                # Add other actions by insertion order
+                sorted_actions.append(action)
             # Remove actions were found last
-            if len(remove_actions) > 0:
-                sorted_actions.extend(sorted(remove_actions, reverse=True))
+        if remove_actions:
+            sorted_actions.extend(sorted(remove_actions, reverse=True))
 
-            self.children = sorted_actions
+        self.children = sorted_actions
 
     def find_clauses(self, clause_types):
         clauses = []
@@ -369,7 +370,7 @@ class DepthFirstTraverser(object):
 
     def nodes_to_be_processed(self):
         """Cached accessor for getting Node types that need to be processed."""
-        return tuple(k for k in self._processing_map().keys())
+        return tuple(self._processing_map().keys())
 
     def process(self, node):
         """Process a Node"""

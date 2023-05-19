@@ -202,7 +202,7 @@ class CognitoIdpUserPoolAttribute(BaseModel):
             self._init_standard(schema)
 
     def _init_custom(self, schema: Dict[str, Any]) -> None:
-        self.name = "custom:" + self.name
+        self.name = f"custom:{self.name}"
         attribute_data_type = schema.get("AttributeDataType", None)
         if not attribute_data_type:
             raise InvalidParameterException(
@@ -211,7 +211,7 @@ class CognitoIdpUserPoolAttribute(BaseModel):
         self.data_type = attribute_data_type
         self.developer_only = schema.get("DeveloperOnlyAttribute", False)
         if self.developer_only:
-            self.name = "dev:" + self.name
+            self.name = f"dev:{self.name}"
         self.mutable = schema.get("Mutable", True)
         if schema.get("Required", False):
             raise InvalidParameterException(
@@ -541,7 +541,7 @@ class CognitoIdpUserPool(BaseModel):
             "exp": now + expires_in,
             "username" if token_use == "access" else "cognito:username": username,
         }
-        payload.update(extra_data or {})
+        payload |= (extra_data or {})
         headers = {"kid": "dummy"}  # KID as present in jwks-public.json
 
         return (
@@ -553,9 +553,9 @@ class CognitoIdpUserPool(BaseModel):
         attributes = []
         for attribute_schema in custom_attributes:
             base_name = attribute_schema["Name"]
-            target_name = "custom:" + base_name
+            target_name = f"custom:{base_name}"
             if attribute_schema.get("DeveloperOnlyAttribute", False):
-                target_name = "dev:" + target_name
+                target_name = f"dev:{target_name}"
             if target_name in self.schema_attributes:
                 raise InvalidParameterException(
                     f"custom:{base_name}: Existing attribute already has name {target_name}."
@@ -611,17 +611,15 @@ class CognitoIdpUserPool(BaseModel):
         self, client_id: str, username: str
     ) -> Dict[str, Any]:
         extra_data = {}
-        current_client = self.clients.get(client_id, None)
-        if current_client:
+        if current_client := self.clients.get(client_id, None):
             for readable_field in current_client.get_readable_fields():
-                attribute = list(
+                if attribute := list(
                     filter(
                         lambda f: f["Name"] == readable_field,
                         self._get_user(username).attributes,
                     )
-                )
-                if len(attribute) > 0:
-                    extra_data.update({attribute[0]["Name"]: attribute[0]["Value"]})
+                ):
+                    extra_data[attribute[0]["Name"]] = attribute[0]["Value"]
         return extra_data
 
     def sign_out(self, username: str) -> None:
@@ -902,7 +900,7 @@ class CognitoResourceServer(BaseModel):
         }
 
         if len(self.scopes) != 0:
-            res.update({"Scopes": self.scopes})
+            res["Scopes"] = self.scopes
 
         return res
 
@@ -966,11 +964,10 @@ class CognitoIdpBackend(BaseBackend):
         return list(self.user_pools.values())
 
     def describe_user_pool(self, user_pool_id: str) -> CognitoIdpUserPool:
-        user_pool = self.user_pools.get(user_pool_id)
-        if not user_pool:
+        if user_pool := self.user_pools.get(user_pool_id):
+            return user_pool
+        else:
             raise ResourceNotFoundError(f"User pool {user_pool_id} does not exist.")
-
-        return user_pool
 
     def update_user_pool(
         self, user_pool_id: str, extended_config: Dict[str, Any]
@@ -1045,11 +1042,10 @@ class CognitoIdpBackend(BaseBackend):
     ) -> CognitoIdpUserPoolClient:
         user_pool = self.describe_user_pool(user_pool_id)
 
-        client = user_pool.clients.get(client_id)
-        if not client:
+        if client := user_pool.clients.get(client_id):
+            return client
+        else:
             raise ResourceNotFoundError(client_id)
-
-        return client
 
     def update_user_pool_client(
         self, user_pool_id: str, client_id: str, extended_config: Dict[str, str]
@@ -1092,11 +1088,10 @@ class CognitoIdpBackend(BaseBackend):
     ) -> CognitoIdpIdentityProvider:
         user_pool = self.describe_user_pool(user_pool_id)
 
-        identity_provider = user_pool.identity_providers.get(name)
-        if not identity_provider:
+        if identity_provider := user_pool.identity_providers.get(name):
+            return identity_provider
+        else:
             raise ResourceNotFoundError(name)
-
-        return identity_provider
 
     def update_identity_provider(
         self, user_pool_id: str, name: str, extended_config: Dict[str, str]
@@ -1305,10 +1300,10 @@ class CognitoIdpBackend(BaseBackend):
     def admin_get_user(self, user_pool_id: str, username: str) -> CognitoIdpUser:
         user_pool = self.describe_user_pool(user_pool_id)
 
-        user = user_pool._get_user(username)
-        if not user:
+        if user := user_pool._get_user(username):
+            return user
+        else:
             raise UserNotFoundError("User does not exist.")
-        return user
 
     def get_user(self, access_token: str) -> CognitoIdpUser:
         for user_pool in self.user_pools.values():
@@ -1590,9 +1585,9 @@ class CognitoIdpBackend(BaseBackend):
             user.confirmation_code = confirmation_code
 
         code_delivery_details = {
-            "Destination": username + "@h***.com"
+            "Destination": f"{username}@h***.com"
             if not user
-            else user.attribute_lookup.get("email", username + "@h***.com"),
+            else user.attribute_lookup.get("email", f"{username}@h***.com"),
             "DeliveryMedium": "EMAIL",
             "AttributeName": "email",
         }

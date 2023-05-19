@@ -283,7 +283,7 @@ class FlowLogsBackend:
     def describe_flow_logs(
         self, flow_log_ids: Optional[List[str]] = None, filters: Any = None
     ) -> List[FlowLogs]:
-        matches = list(itertools.chain([i for i in self.flow_logs.values()]))
+        matches = list(itertools.chain(list(self.flow_logs.values())))
         if flow_log_ids:
             matches = [flow_log for flow_log in matches if flow_log.id in flow_log_ids]
         if filters:
@@ -299,6 +299,4 @@ class FlowLogsBackend:
                 non_existing.append(flow_log)
 
         if non_existing:
-            raise InvalidFlowLogIdError(
-                len(flow_log_ids), " ".join(x for x in flow_log_ids)
-            )
+            raise InvalidFlowLogIdError(len(flow_log_ids), " ".join(flow_log_ids))

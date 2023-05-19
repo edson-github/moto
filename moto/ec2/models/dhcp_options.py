@@ -99,15 +99,14 @@ class DHCPOptionsSetBackend:
         return options
 
     def delete_dhcp_options_set(self, options_id: Optional[str]) -> None:
-        if not (options_id and options_id.startswith("dopt-")):
+        if not options_id or not options_id.startswith("dopt-"):
             raise MalformedDHCPOptionsIdError(options_id)
 
-        if options_id in self.dhcp_options_sets:
-            if self.dhcp_options_sets[options_id].vpc:
-                raise DependencyViolationError("Cannot delete assigned DHCP options.")
-            self.dhcp_options_sets.pop(options_id)
-        else:
+        if options_id not in self.dhcp_options_sets:
             raise InvalidDHCPOptionsIdError(options_id)
+        if self.dhcp_options_sets[options_id].vpc:
+            raise DependencyViolationError("Cannot delete assigned DHCP options.")
+        self.dhcp_options_sets.pop(options_id)
 
     def describe_dhcp_options(
         self, dhcp_options_ids: Optional[List[str]] = None, filters: Any = None
@@ -123,12 +122,10 @@ class DHCPOptionsSetBackend:
             if len(dhcp_options_sets) != len(dhcp_options_ids):
                 invalid_id = list(
                     set(dhcp_options_ids).difference(
-                        set(
-                            [
-                                dhcp_options_set.id
-                                for dhcp_options_set in dhcp_options_sets
-                            ]
-                        )
+                        {
+                            dhcp_options_set.id
+                            for dhcp_options_set in dhcp_options_sets
+                        }
                     )
                 )[0]
                 raise InvalidDHCPOptionsIdError(invalid_id)

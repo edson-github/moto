@@ -27,10 +27,7 @@ class DataPipelineResponse(BaseResponse):
         pipeline_ids = [pipeline.pipeline_id for pipeline in pipelines]
         max_pipelines = 50
         marker = self._get_param("marker")
-        if marker:
-            start = pipeline_ids.index(marker) + 1
-        else:
-            start = 0
+        start = pipeline_ids.index(marker) + 1 if marker else 0
         pipelines_resp = pipelines[start : start + max_pipelines]
         has_more_results = False
         marker = None

@@ -55,7 +55,7 @@ PAGINATION_MODEL = {
 def create_id() -> str:
     size = 26
     chars = list(range(10)) + list(string.ascii_lowercase)
-    return "".join(str(random.choice(chars)) for x in range(size))
+    return "".join(str(random.choice(chars)) for _ in range(size))
 
 
 def check_secret_hash(
@@ -64,7 +64,7 @@ def check_secret_hash(
     username: str,
     secret_hash: Optional[str],
 ) -> bool:
-    key = bytes(str(app_client_secret).encode("latin-1"))
+    key = bytes(app_client_secret.encode("latin-1"))
     msg = bytes(str(username + app_client_id).encode("latin-1"))
     new_digest = hmac.new(key, msg, hashlib.sha256).digest()
     SECRET_HASH = base64.b64encode(new_digest).decode()

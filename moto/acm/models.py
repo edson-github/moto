@@ -70,8 +70,7 @@ class TagHolder(Dict[str, Optional[str]]):
             )
         if key.startswith("aws:"):
             raise AWSValidationException(
-                'Invalid Tag Key: "%s". AWS internal tags cannot be changed with this API'
-                % key
+                f'Invalid Tag Key: "{key}". AWS internal tags cannot be changed with this API'
             )
 
     def add(self, tags: List[Dict[str, str]]) -> None:
@@ -84,8 +83,12 @@ class TagHolder(Dict[str, Optional[str]]):
             tags_copy[key] = value
         if len(tags_copy) > self.MAX_TAG_COUNT:
             raise AWSTooManyTagsException(
-                "the TagSet: '{%s}' contains too many Tags"
-                % ", ".join(k + "=" + str(v or "") for k, v in tags_copy.items())
+                (
+                    "the TagSet: '{%s}' contains too many Tags"
+                    % ", ".join(
+                        f"{k}=" + str(v or "") for k, v in tags_copy.items()
+                    )
+                )
             )
 
         self.update(tags_copy)
@@ -97,10 +100,7 @@ class TagHolder(Dict[str, Optional[str]]):
             self._validate_kv(key, value, i + 1)
             try:
                 # If value isnt provided, just delete key
-                if value is None:
-                    del self[key]
-                # If value is provided, only delete if it matches what already exists
-                elif self[key] == value:
+                if value is None or self[key] == value:
                     del self[key]
             except KeyError:
                 pass
@@ -310,10 +310,7 @@ class CertBundle(BaseModel):
             )
         except cryptography.x509.ExtensionNotFound:
             san_obj = None
-        sans = []
-        if san_obj is not None:
-            sans = [item.value for item in san_obj.value]
-
+        sans = [item.value for item in san_obj.value] if san_obj is not None else []
         result: Dict[str, Any] = {
             "Certificate": {
                 "CertificateArn": self.arn,
@@ -416,13 +413,12 @@ class AWSCertificateManagerBackend(BaseBackend):
         """
         now = datetime.datetime.utcnow()
         if token in self._idempotency_tokens:
-            if self._idempotency_tokens[token]["expires"] < now:
-                # Token has expired, new request
-                del self._idempotency_tokens[token]
-                return None
-            else:
+            if self._idempotency_tokens[token]["expires"] >= now:
                 return self._idempotency_tokens[token]["arn"]
 
+            # Token has expired, new request
+            del self._idempotency_tokens[token]
+            return None
         return None
 
     def _set_idempotency_token_arn(self, token: str, arn: str) -> None:
@@ -439,20 +435,7 @@ class AWSCertificateManagerBackend(BaseBackend):
         arn: Optional[str],
         tags: List[Dict[str, str]],
     ) -> str:
-        if arn is not None:
-            if arn not in self._certificates:
-                raise CertificateNotFound(arn=arn, account_id=self.account_id)
-            else:
-                # Will reuse provided ARN
-                bundle = CertBundle(
-                    self.account_id,
-                    certificate,
-                    private_key,
-                    chain=chain,
-                    region=self.region_name,
-                    arn=arn,
-                )
-        else:
+        if arn is None:
             # Will generate a random ARN
             bundle = CertBundle(
                 self.account_id,
@@ -462,6 +445,18 @@ class AWSCertificateManagerBackend(BaseBackend):
                 region=self.region_name,
             )
 
+        elif arn not in self._certificates:
+            raise CertificateNotFound(arn=arn, account_id=self.account_id)
+        else:
+            # Will reuse provided ARN
+            bundle = CertBundle(
+                self.account_id,
+                certificate,
+                private_key,
+                chain=chain,
+                region=self.region_name,
+                arn=arn,
+            )
         self._certificates[bundle.arn] = bundle
 
         if tags:

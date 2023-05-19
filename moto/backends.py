@@ -5,7 +5,9 @@ from moto.core import BackendDict
 from typing import Iterable, Tuple
 
 
-decorators = [d for d in dir(moto) if d.startswith("mock_") and not d == "mock_all"]
+decorators = [
+    d for d in dir(moto) if d.startswith("mock_") and d != "mock_all"
+]
 decorator_functions = [getattr(moto, f) for f in decorators]
 BACKENDS = {f.boto3_name: (f.name, f.backend) for f in decorator_functions}
 BACKENDS["dynamodb_v20111205"] = ("dynamodb_v20111205", "dynamodb_backends")
@@ -15,7 +17,7 @@ BACKENDS["s3bucket_path"] = ("s3", "s3_backends")
 
 
 def _import_backend(module_name: str, backends_name: str) -> BackendDict:
-    module = importlib.import_module("moto." + module_name)
+    module = importlib.import_module(f"moto.{module_name}")
     return getattr(module, backends_name)
 
 

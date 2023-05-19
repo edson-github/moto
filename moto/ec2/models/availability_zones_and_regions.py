@@ -306,9 +306,7 @@ class RegionsAndZonesBackend:
             return self.regions
         ret = []
         for name in region_names:
-            for region in self.regions:
-                if region.name == name:
-                    ret.append(region)
+            ret.extend(region for region in self.regions if region.name == name)
         return ret
 
     def describe_availability_zones(
@@ -328,7 +326,11 @@ class RegionsAndZonesBackend:
         return result
 
     def get_zone_by_name(self, name: str) -> Optional[Zone]:
-        for zone in self.describe_availability_zones():
-            if zone.name == name:
-                return zone
-        return None
+        return next(
+            (
+                zone
+                for zone in self.describe_availability_zones()
+                if zone.name == name
+            ),
+            None,
+        )

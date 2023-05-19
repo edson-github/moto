@@ -132,9 +132,7 @@ class BaseMockAWS:
 
     def decorate_class(self, klass: type) -> object:
         direct_methods = get_direct_methods_of(klass)
-        defined_classes = set(
-            x for x, y in klass.__dict__.items() if inspect.isclass(y)
-        )
+        defined_classes = {x for x, y in klass.__dict__.items() if inspect.isclass(y)}
 
         # Get a list of all userdefined superclasses
         superclasses = [
@@ -186,10 +184,6 @@ class BaseMockAWS:
                 elif not has_setup_method and is_test_method:
                     should_reset = True
                     should_remove_data = True
-                else:
-                    # Method is unrelated to the test setup
-                    # Method is a test, but was already reset while executing the setUp-method
-                    pass
                 kwargs = {"reset": should_reset, "remove_data": should_remove_data}
                 setattr(klass, attr, self(attr_value, **kwargs))
             except TypeError:
@@ -217,11 +211,11 @@ class BaseMockAWS:
 
 
 def get_direct_methods_of(klass: object) -> Set[str]:
-    return set(
+    return {
         x
         for x, y in klass.__dict__.items()
         if isinstance(y, (FunctionType, classmethod, staticmethod))
-    )
+    }
 
 
 RESPONSES_METHODS = [
@@ -264,26 +258,25 @@ def patch_client(client: botocore.client.BaseClient) -> None:
     :param client:
     :return:
     """
-    if isinstance(client, botocore.client.BaseClient):
-        # Check if our event handler was already registered
-        try:
-            event_emitter = client._ruleset_resolver._event_emitter._emitter  # type: ignore
-            all_handlers = event_emitter._handlers._root["children"]  # type: ignore
-            handler_trie = list(all_handlers["before-send"].values())[1]  # type: ignore
-            handlers_list = handler_trie.first + handler_trie.middle + handler_trie.last
-            if botocore_stubber in handlers_list:
-                # No need to patch - this client already has the botocore_stubber registered
-                return
-        except:  # noqa: E722 Do not use bare except
-            # Because we're accessing all kinds of private methods, the API may change and newer versions of botocore may throw an exception
-            # One of our tests will fail if this happens (test_patch_can_be_called_on_a_mocked_client)
-            # If this happens for a user, just continue and hope for the best
-            #  - in 99% of the cases there are no duplicate event handlers, so it doesn't matter if the check fails
-            pass
-
-        client.meta.events.register("before-send", botocore_stubber)
-    else:
+    if not isinstance(client, botocore.client.BaseClient):
         raise Exception(f"Argument {client} should be of type boto3.client")
+    # Check if our event handler was already registered
+    try:
+        event_emitter = client._ruleset_resolver._event_emitter._emitter  # type: ignore
+        all_handlers = event_emitter._handlers._root["children"]  # type: ignore
+        handler_trie = list(all_handlers["before-send"].values())[1]  # type: ignore
+        handlers_list = handler_trie.first + handler_trie.middle + handler_trie.last
+        if botocore_stubber in handlers_list:
+            # No need to patch - this client already has the botocore_stubber registered
+            return
+    except:  # noqa: E722 Do not use bare except
+        # Because we're accessing all kinds of private methods, the API may change and newer versions of botocore may throw an exception
+        # One of our tests will fail if this happens (test_patch_can_be_called_on_a_mocked_client)
+        # If this happens for a user, just continue and hope for the best
+        #  - in 99% of the cases there are no duplicate event handlers, so it doesn't matter if the check fails
+        pass
+
+    client.meta.events.register("before-send", botocore_stubber)
 
 
 def patch_resource(resource: Any) -> None:
@@ -372,9 +365,9 @@ class ServerModeMockAWS(BaseMockAWS):
         call_reset_api = os.environ.get("MOTO_CALL_RESET_API")
         if not call_reset_api or call_reset_api.lower() != "false":
             if not ServerModeMockAWS.RESET_IN_PROGRESS:
-                ServerModeMockAWS.RESET_IN_PROGRESS = True
                 import requests
 
+                ServerModeMockAWS.RESET_IN_PROGRESS = True
                 requests.post(f"{self.test_server_mode_endpoint}/moto-api/reset")
                 ServerModeMockAWS.RESET_IN_PROGRESS = False
 
@@ -389,9 +382,9 @@ class ServerModeMockAWS(BaseMockAWS):
             region = self._get_region(*args, **kwargs)
             if region:
                 if "config" in kwargs:
-                    kwargs["config"].__dict__["user_agent_extra"] += " region/" + region
+                    kwargs["config"].__dict__["user_agent_extra"] += f" region/{region}"
                 else:
-                    config = Config(user_agent_extra="region/" + region)
+                    config = Config(user_agent_extra=f"region/{region}")
                     kwargs["config"] = config
             if "endpoint_url" not in kwargs:
                 kwargs["endpoint_url"] = self.test_server_mode_endpoint
@@ -433,7 +426,4 @@ class base_decorator:
         else:
             mocked_backend = self.mock_backend(self.backends)
 
-        if func:
-            return mocked_backend(func)
-        else:
-            return mocked_backend
+        return mocked_backend(func) if func else mocked_backend

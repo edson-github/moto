@@ -44,7 +44,7 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
         self.id = subnet_id
         self.vpc_id = vpc_id
         self.cidr_block = cidr_block
-        self.cidr = ipaddress.IPv4Network(str(self.cidr_block), strict=False)
+        self.cidr = ipaddress.IPv4Network(self.cidr_block, strict=False)
         self._available_ip_addresses = self.cidr.num_addresses - 5
         self._availability_zone = availability_zone
         self.default_for_az = default_for_az
@@ -164,15 +164,15 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
 
         Taken from: http://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSubnets.html
         """
-        if filter_name in ("cidr", "cidrBlock", "cidr-block"):
+        if filter_name in {"cidr", "cidrBlock", "cidr-block"}:
             return self.cidr_block
-        elif filter_name in ("vpc-id", "vpcId"):
+        elif filter_name in {"vpc-id", "vpcId"}:
             return self.vpc_id
         elif filter_name == "subnet-id":
             return self.id
-        elif filter_name in ("availabilityZone", "availability-zone"):
+        elif filter_name in {"availabilityZone", "availability-zone"}:
             return self.availability_zone
-        elif filter_name in ("defaultForAz", "default-for-az"):
+        elif filter_name in {"defaultForAz", "default-for-az"}:
             return self.default_for_az
         elif filter_name == "state":
             return self.state
@@ -181,7 +181,7 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
 
     @classmethod
     def has_cfn_attr(cls, attr: str) -> bool:
-        return attr in ["AvailabilityZone"]
+        return attr in {"AvailabilityZone"}
 
     def get_cfn_attribute(self, attribute_name: str) -> None:
         from moto.cloudformation.exceptions import UnformattedGetAttTemplateException
@@ -283,10 +283,9 @@ class SubnetRouteTableAssociation(CloudFormationModel):
         subnet_id = properties["SubnetId"]
 
         ec2_backend = ec2_backends[account_id][region_name]
-        subnet_association = ec2_backend.create_subnet_association(
+        return ec2_backend.create_subnet_association(
             route_table_id=route_table_id, subnet_id=subnet_id
         )
-        return subnet_association
 
 
 class SubnetBackend:
@@ -329,20 +328,18 @@ class SubnetBackend:
             for cidr_block_association in vpc.get_cidr_block_association_set()
         ]
         try:
-            subnet_cidr_block = ipaddress.IPv4Network(str(cidr_block), strict=False)
+            subnet_cidr_block = ipaddress.IPv4Network(cidr_block, strict=False)
         except ValueError:
             raise InvalidCIDRBlockParameterError(cidr_block)
 
-        subnet_in_vpc_cidr_range = False
-        for vpc_cidr_block in vpc_cidr_blocks:
-            if (
+        subnet_in_vpc_cidr_range = any(
+            (
                 vpc_cidr_block.network_address <= subnet_cidr_block.network_address
                 and vpc_cidr_block.broadcast_address
                 >= subnet_cidr_block.broadcast_address
-            ):
-                subnet_in_vpc_cidr_range = True
-                break
-
+            )
+            for vpc_cidr_block in vpc_cidr_blocks
+        )
         if not subnet_in_vpc_cidr_range:
             raise InvalidSubnetRangeError(cidr_block)
 
@@ -435,7 +432,10 @@ class SubnetBackend:
         self, subnet_id: str, attr_name: str, attr_value: str
     ) -> None:
         subnet = self.get_subnet(subnet_id)
-        if attr_name in ("map_public_ip_on_launch", "assign_ipv6_address_on_creation"):
+        if attr_name in {
+            "map_public_ip_on_launch",
+            "assign_ipv6_address_on_creation",
+        }:
             setattr(subnet, attr_name, attr_value)
         else:
             raise InvalidParameterValueError(attr_name)
@@ -450,11 +450,10 @@ class SubnetBackend:
     def associate_subnet_cidr_block(
         self, subnet_id: str, ipv6_cidr_block: str
     ) -> Dict[str, str]:
-        subnet = self.get_subnet(subnet_id)
-        if not subnet:
+        if subnet := self.get_subnet(subnet_id):
+            return subnet.attach_ipv6_cidr_block_associations(ipv6_cidr_block)
+        else:
             raise InvalidSubnetIdError(subnet_id)
-        association = subnet.attach_ipv6_cidr_block_associations(ipv6_cidr_block)
-        return association
 
     def disassociate_subnet_cidr_block(
         self, association_id: str

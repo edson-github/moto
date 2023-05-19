@@ -43,11 +43,7 @@ JINJA_ENVS: Dict[type, Environment] = {}
 def _decode_dict(d: Dict[Any, Any]) -> Dict[str, Any]:
     decoded: Dict[str, Any] = OrderedDict()
     for key, value in d.items():
-        if isinstance(key, bytes):
-            newkey = key.decode("utf-8")
-        else:
-            newkey = key
-
+        newkey = key.decode("utf-8") if isinstance(key, bytes) else key
         if isinstance(value, bytes):
             decoded[newkey] = value.decode("utf-8")
         elif isinstance(value, (list, tuple)):
@@ -69,7 +65,7 @@ class DynamicDictLoader(DictLoader):
         self.mapping.update(mapping)  # type: ignore[attr-defined]
 
     def contains(self, template: str) -> bool:
-        return bool(template in self.mapping)
+        return template in self.mapping
 
 
 class _TemplateEnvironmentMixin(object):
@@ -108,7 +104,7 @@ class _TemplateEnvironmentMixin(object):
 
         Jinja2 expects to template IDs to be strings.
         """
-        return str(id(source))
+        return id(source)
 
     def response_template(self, source: str) -> Template:
         template_id = self._make_template_id(source)
@@ -136,7 +132,7 @@ class ActionAuthenticatorMixin(object):
             parsed_url = urlparse(self.uri)  # type: ignore[attr-defined]
             path = parsed_url.path
             if parsed_url.query:
-                path += "?" + parsed_url.query
+                path += f"?{parsed_url.query}"
             iam_request = iam_request_cls(
                 account_id=self.current_account,  # type: ignore[attr-defined]
                 method=self.method,  # type: ignore[attr-defined]
@@ -326,25 +322,25 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
             request.headers.get("User-Agent", "")
         )
         if url_match:
-            region = url_match.group(1)
+            return url_match.group(1)
         elif user_agent_match:
-            region = user_agent_match.group(1)
+            return user_agent_match.group(1)
         elif (
             "Authorization" in request.headers
             and "AWS4" in request.headers["Authorization"]
         ):
-            region = request.headers["Authorization"].split(",")[0].split("/")[2]
+            return request.headers["Authorization"].split(",")[0].split("/")[2]
         else:
-            region = self.default_region
-        return region
+            return self.default_region
 
     def get_access_key(self) -> str:
         """
         Returns the access key id used in this request as the current user id
         """
         if "Authorization" in self.headers:
-            match = self.access_key_regex.search(self.headers["Authorization"])
-            if match:
+            if match := self.access_key_regex.search(
+                self.headers["Authorization"]
+            ):
                 return match.group(1)
 
         if self.querystring.get("AWSAccessKeyId"):
@@ -390,9 +386,7 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
                 .replace("+", "")
                 .replace("-", "_")
             )
-            if is_last:
-                return f"(?P<{name}>[^/]+)"
-            return f"(?P<{name}>.*)"
+            return f"(?P<{name}>[^/]+)" if is_last else f"(?P<{name}>.*)"
 
         elems = uri.split("/")
         num_elems = len(elems)
@@ -433,13 +427,11 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         return None  # type: ignore[return-value]
 
     def _get_action(self) -> str:
-        action = self.querystring.get("Action", [""])[0]
-        if action:
+        if action := self.querystring.get("Action", [""])[0]:
             return action
-        # Some services use a header for the action
-        # Headers are case-insensitive. Probably a better way to do this.
-        match = self.headers.get("x-amz-target") or self.headers.get("X-Amz-Target")
-        if match:
+        if match := self.headers.get("x-amz-target") or self.headers.get(
+            "X-Amz-Target"
+        ):
             return match.split(".")[-1]
         # get action from method and uri
         return self._get_action_from_method_and_request_uri(self.method, self.path)
@@ -485,7 +477,7 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         else:
             status, new_headers, body = response
         status = new_headers.get("status", 200)
-        headers.update(new_headers)
+        headers |= new_headers
         # Cast status to string
         if "status" in headers:
             headers["status"] = str(headers["status"])
@@ -517,9 +509,7 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         self, param_name: str, if_none: TYPE_IF_NONE = None  # type: ignore[assignment]
     ) -> Union[int, TYPE_IF_NONE]:
         val = self._get_param(param_name)
-        if val is not None:
-            return int(val)
-        return if_none
+        return int(val) if val is not None else if_none
 
     def _get_bool_param(
         self, param_name: str, if_none: TYPE_IF_NONE = None  # type: ignore[assignment]
@@ -542,7 +532,7 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         skip_result_conversion: bool = False,
         tracked_prefixes: Optional[Set[str]] = None,
     ) -> Any:
-        value_dict = dict()
+        value_dict = {}
         tracked_prefixes = (
             tracked_prefixes or set()
         )  # prefixes which have already been processed
@@ -567,25 +557,24 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
                 tracked_prefixes.add(prefix)
                 name = prefix
                 value_dict[name] = value
-            else:
-                match = self.param_regex.search(name[len(param_prefix) :])
-                if match:
-                    # enable access to params that are lists of dicts, e.g., "TagSpecification.1.ResourceType=.."
-                    sub_attr = (
-                        f"{name[: len(param_prefix)]}{match.group(1)}.{match.group(2)}"
+            elif match := self.param_regex.search(name[len(param_prefix) :]):
+                # enable access to params that are lists of dicts, e.g., "TagSpecification.1.ResourceType=.."
+                sub_attr = (
+                    f"{name[: len(param_prefix)]}{match.group(1)}.{match.group(2)}"
+                )
+                value = (
+                    self._get_multi_param_helper(
+                        sub_attr,
+                        tracked_prefixes=tracked_prefixes,
+                        skip_result_conversion=skip_result_conversion,
                     )
-                    if match.group(3):
-                        value = self._get_multi_param_helper(
-                            sub_attr,
-                            tracked_prefixes=tracked_prefixes,
-                            skip_result_conversion=skip_result_conversion,
-                        )
-                    else:
-                        value = self._get_param(sub_attr)
-                    tracked_prefixes.add(sub_attr)
-                    value_dict[name] = value
-                else:
-                    value_dict[name] = value[0]
+                    if match.group(3)
+                    else self._get_param(sub_attr)
+                )
+                tracked_prefixes.add(sub_attr)
+                value_dict[name] = value
+            else:
+                value_dict[name] = value[0]
 
         if not value_dict:
             return None
@@ -612,10 +601,7 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         Given a querystring of ?LaunchConfigurationNames.member.1=my-test-1&LaunchConfigurationNames.member.2=my-test-2
         this will return ['my-test-1', 'my-test-2']
         """
-        if param_prefix.endswith("."):
-            prefix = param_prefix
-        else:
-            prefix = param_prefix + "."
+        prefix = param_prefix if param_prefix.endswith(".") else f"{param_prefix}."
         values = []
         index = 1
         while True:
@@ -644,12 +630,11 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
             "instance_count": "1",
         }
         """
-        params: Dict[str, Any] = {}
-        for key, value in self.querystring.items():
-            if key.startswith(param_prefix):
-                params[camelcase_to_underscores(key.replace(param_prefix, ""))] = value[
-                    0
-                ]
+        params: Dict[str, Any] = {
+            camelcase_to_underscores(key.replace(param_prefix, "")): value[0]
+            for key, value in self.querystring.items()
+            if key.startswith(param_prefix)
+        }
         return params
 
     def _get_params(self) -> Dict[str, Any]:
@@ -701,27 +686,26 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
                 # step into
                 parent = obj
                 obj = obj[key]
-            else:
-                if key == "member":
-                    if not isinstance(obj, list):
-                        # initialize list
-                        # reset parent
-                        obj = []
-                        parent[keylist[i - 1]] = obj
-                elif isinstance(obj, dict):
-                    # initialize dict
-                    obj[key] = {}
-                    # step into
-                    parent = obj
-                    obj = obj[key]
-                elif key.isdigit():
-                    index = int(key) - 1
-                    if len(obj) <= index:
-                        # initialize list element
-                        obj.insert(index, {})
-                    # step into
-                    parent = obj
-                    obj = obj[index]
+            elif key == "member":
+                if not isinstance(obj, list):
+                    # initialize list
+                    # reset parent
+                    obj = []
+                    parent[keylist[i - 1]] = obj
+            elif isinstance(obj, dict):
+                # initialize dict
+                obj[key] = {}
+                # step into
+                parent = obj
+                obj = obj[key]
+            elif key.isdigit():
+                index = int(key) - 1
+                if len(obj) <= index:
+                    # initialize list element
+                    obj.insert(index, {})
+                # step into
+                parent = obj
+                obj = obj[index]
         if isinstance(obj, list):
             obj.append(value)
         else:
@@ -754,12 +738,11 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         param_index = 1
         while True:
             index_prefix = f"{param_prefix}.{param_index}."
-            new_items = {}
-            for key, value in self.querystring.items():
-                if key.startswith(index_prefix):
-                    new_items[
-                        camelcase_to_underscores(key.replace(index_prefix, ""))
-                    ] = value[0]
+            new_items = {
+                camelcase_to_underscores(key.replace(index_prefix, "")): value[0]
+                for key, value in self.querystring.items()
+                if key.startswith(index_prefix)
+            }
             if not new_items:
                 break
             results.append(new_items)
@@ -1000,16 +983,12 @@ def to_str(value: Any, spec: Dict[str, Any]) -> str:
 def from_str(value: str, spec: Dict[str, Any]) -> Any:
     vtype = spec["type"]
     if vtype == "boolean":
-        return True if value == "true" else False
+        return value == "true"
+    elif vtype in ["float", "double"]:
+        return float(value)
     elif vtype == "integer":
         return int(value)
-    elif vtype == "float":
-        return float(value)
-    elif vtype == "double":
-        return float(value)
-    elif vtype == "timestamp":
-        return value
-    elif vtype == "string":
+    elif vtype in ["timestamp", "string"]:
         return value
     raise TypeError(f"Unknown type {vtype}")
 
@@ -1026,23 +1005,19 @@ def flatten_json_request_body(
         node_type = spec[key]["type"]
         if node_type == "list":
             for idx, v in enumerate(value, 1):
-                pref = key + ".member." + str(idx)
-                flat.update(flatten_json_request_body(pref, v, spec[key]["member"]))
+                pref = f"{key}.member.{str(idx)}"
+                flat |= flatten_json_request_body(pref, v, spec[key]["member"])
         elif node_type == "map":
             for idx, (k, v) in enumerate(value.items(), 1):
-                pref = key + ".entry." + str(idx)
-                flat.update(
-                    flatten_json_request_body(pref + ".key", k, spec[key]["key"])
-                )
-                flat.update(
-                    flatten_json_request_body(pref + ".value", v, spec[key]["value"])
-                )
+                pref = f"{key}.entry.{str(idx)}"
+                flat.update(flatten_json_request_body(f"{pref}.key", k, spec[key]["key"]))
+                flat.update(flatten_json_request_body(f"{pref}.value", v, spec[key]["value"]))
         else:
             flat.update(flatten_json_request_body(key, value, spec[key]))
 
     if prefix:
-        prefix = prefix + "."
-    return dict((prefix + k, v) for k, v in flat.items())
+        prefix += "."
+    return {prefix + k: v for k, v in flat.items()}
 
 
 def xml_to_json_response(
@@ -1104,16 +1079,13 @@ def xml_to_json_response(
                             od[k] = {}
                         od[k][key] = val
             else:
-                if v is None:
-                    od[k] = None
-                else:
-                    od[k] = transform(v, spec[k])
+                od[k] = None if v is None else transform(v, spec[k])
         return od
 
     dic = xmltodict.parse(xml)
     output_spec = service_spec.output_spec(operation)
     try:
-        for k in result_node or (operation + "Response", operation + "Result"):
+        for k in result_node or (f"{operation}Response", f"{operation}Result"):
             dic = dic[k]
     except KeyError:
         return None  # type: ignore[return-value]

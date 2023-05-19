@@ -13,10 +13,8 @@ class MockRawResponse(BytesIO):
         super().__init__(response_input)
 
     def stream(self, **kwargs: Any) -> Any:  # pylint: disable=unused-argument
-        contents = self.read()
-        while contents:
+        while contents := self.read():
             yield contents
-            contents = self.read()
 
 
 class BotocoreStubber:
@@ -42,15 +40,17 @@ class BotocoreStubber:
         from moto.moto_api import recorder
 
         response = None
-        response_callback = None
         matchers = self.methods.get(request.method, [])
 
         base_url = request.url.split("?", 1)[0]
-        for pattern, callback in matchers:
-            if pattern.match(base_url):
-                response_callback = callback
-                break
-
+        response_callback = next(
+            (
+                callback
+                for pattern, callback in matchers
+                if pattern.match(base_url)
+            ),
+            None,
+        )
         if response_callback is not None:
             for header, value in request.headers.items():
                 if isinstance(value, bytes):

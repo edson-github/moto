@@ -41,10 +41,7 @@ def underscores_to_camelcase(argument: str) -> str:
     previous_was_underscore = False
     for char in argument:
         if char != "_":
-            if previous_was_underscore:
-                result += char.upper()
-            else:
-                result += char
+            result += char.upper() if previous_was_underscore else char
         previous_was_underscore = char == "_"
     return result
 
@@ -107,11 +104,7 @@ class convert_to_flask_response(object):
         except ClientError as exc:
             result = 400, {}, exc.response["Error"]["Message"]
         # result is a status, headers, response tuple
-        if len(result) == 3:
-            status, headers, content = result
-        else:
-            status, headers, content = 200, {}, result
-
+        status, headers, content = result if len(result) == 3 else (200, {}, result)
         response = Response(response=content, status=status, headers=headers)
         if request.method == "HEAD" and "content-length" in headers:
             response.headers["Content-Length"] = headers["content-length"]
@@ -194,7 +187,7 @@ def path_url(url: str) -> str:
     if not path:
         path = "/"
     if parsed_url.query:
-        path = path + "?" + parsed_url.query
+        path = f"{path}?{parsed_url.query}"
     return path
 
 
@@ -205,9 +198,9 @@ def tags_from_query_string(
     value_suffix: str = "Value",
 ) -> Dict[str, str]:
     response_values = {}
-    for key in querystring_dict.keys():
+    for key in querystring_dict:
         if key.startswith(prefix) and key.endswith(key_suffix):
-            tag_index = key.replace(prefix + ".", "").replace("." + key_suffix, "")
+            tag_index = key.replace(f"{prefix}.", "").replace(f".{key_suffix}", "")
             tag_key = querystring_dict[f"{prefix}.{tag_index}.{key_suffix}"][0]
             tag_value_key = f"{prefix}.{tag_index}.{value_suffix}"
             if tag_value_key in querystring_dict:
@@ -221,13 +214,7 @@ def tags_from_cloudformation_tags_list(
     tags_list: List[Dict[str, str]]
 ) -> Dict[str, str]:
     """Return tags in dict form from cloudformation resource tags form (list of dicts)"""
-    tags = {}
-    for entry in tags_list:
-        key = entry["Key"]
-        value = entry["Value"]
-        tags[key] = value
-
-    return tags
+    return {entry["Key"]: entry["Value"] for entry in tags_list}
 
 
 def remap_nested_keys(root: Any, key_transform: Callable[[str], str]) -> Any:
@@ -297,18 +284,13 @@ def aws_api_matches(pattern: str, string: Any) -> bool:
     # aws api seems to anchor
     anchored_pattern = f"^{pattern}$"
 
-    if re.match(anchored_pattern, str(string)):
-        return True
-    else:
-        return False
+    return bool(re.match(anchored_pattern, str(string)))
 
 
 def extract_region_from_aws_authorization(string: str) -> Optional[str]:
     auth = string or ""
     region = re.sub(r".*Credential=[^/]+/[^/]+/([^/]+)/.*", r"\1", auth)
-    if region == auth:
-        return None
-    return region
+    return None if region == auth else region
 
 
 def params_sort_function(item: Tuple[str, Any]) -> Tuple[str, Any]:

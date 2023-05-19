@@ -111,24 +111,22 @@ class ExpressionPathResolver:
                     if child == update_expression_path_nodes[-1]:
                         return NoneExistingPath(creatable=True)
                     return NoneExistingPath()
+            elif isinstance(child, ExpressionPathDescender):
+                continue
+            elif isinstance(child, ExpressionSelector):
+                index = child.get_index()
+                if not target.is_list():
+                    raise InvalidUpdateExpressionInvalidDocumentPath
+                try:
+                    target = target[index]
+                except IndexError:
+                    # When a list goes out of bounds when assigning that is no problem when at the assignment
+                    # side. It will just append to the list.
+                    if child == update_expression_path_nodes[-1]:
+                        return NoneExistingPath(creatable=True)
+                    return NoneExistingPath()
             else:
-                if isinstance(child, ExpressionPathDescender):
-                    continue
-                elif isinstance(child, ExpressionSelector):
-                    index = child.get_index()
-                    if target.is_list():  # type: ignore
-                        try:
-                            target = target[index]
-                        except IndexError:
-                            # When a list goes out of bounds when assigning that is no problem when at the assignment
-                            # side. It will just append to the list.
-                            if child == update_expression_path_nodes[-1]:
-                                return NoneExistingPath(creatable=True)
-                            return NoneExistingPath()
-                    else:
-                        raise InvalidUpdateExpressionInvalidDocumentPath
-                else:
-                    raise NotImplementedError(f"Path resolution for {type(child)}")
+                raise NotImplementedError(f"Path resolution for {type(child)}")
         return DDBTypedValue(target)
 
     def resolve_expression_path_nodes_to_dynamo_type(
@@ -178,10 +176,7 @@ class ExpressionAttributeResolvingProcessor(DepthFirstTraverser):  # type: ignor
                 UpdateExpressionAddAction,
             ),
         ):
-            if child_id == 0:
-                self.resolving = False
-            else:
-                self.resolving = True
+            self.resolving = child_id != 0
 
     def disable_resolving(self, node: DDBTypedValue) -> DDBTypedValue:
         self.resolving = False
@@ -191,16 +186,15 @@ class ExpressionAttributeResolvingProcessor(DepthFirstTraverser):  # type: ignor
         """Resolve ExpressionAttribute if not part of a path and resolving is enabled."""
         if self.resolving:
             return self.resolve_expression_path(node)
-        else:
-            # Still resolve but return original note to make sure path is correct Just make sure nodes are creatable.
-            result_node = self.resolve_expression_path(node)
-            if (
-                isinstance(result_node, NoneExistingPath)
-                and not result_node.is_creatable()
-            ):
-                raise InvalidUpdateExpressionInvalidDocumentPath()
+        # Still resolve but return original note to make sure path is correct Just make sure nodes are creatable.
+        result_node = self.resolve_expression_path(node)
+        if (
+            isinstance(result_node, NoneExistingPath)
+            and not result_node.is_creatable()
+        ):
+            raise InvalidUpdateExpressionInvalidDocumentPath()
 
-            return node
+        return node
 
     def resolve_expression_path(
         self, node: DDBTypedValue
@@ -233,10 +227,7 @@ class UpdateExpressionFunctionEvaluator(DepthFirstTraverser):  # type: ignore[mi
         second_arg = node.get_nth_argument(2)
 
         if function_name == "if_not_exists":
-            if isinstance(first_arg, NoneExistingPath):
-                result = second_arg
-            else:
-                result = first_arg
+            result = second_arg if isinstance(first_arg, NoneExistingPath) else first_arg
             assert isinstance(result, (DDBTypedValue, NoneExistingPath))
             return result
         elif function_name == "list_append":
@@ -453,7 +444,7 @@ class Validator:
 class UpdateExpressionValidator(Validator):
     def get_ast_processors(self) -> List[DepthFirstTraverser]:
         """Get the different processors that go through the AST tree and processes the nodes."""
-        processors = [
+        return [
             UpdateHashRangeKeyValidator(
                 self.table.table_key_attrs, self.expression_attribute_names or {}
             ),
@@ -466,4 +457,3 @@ class UpdateExpressionValidator(Validator):
             ExecuteOperations(),
             EmptyStringKeyValueValidator(self.table.attribute_keys),
         ]
-        return processors

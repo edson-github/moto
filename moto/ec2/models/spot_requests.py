@@ -100,8 +100,9 @@ class SpotInstanceRequest(TaggedEC2Resource):
 
         if security_groups:
             for group_name in security_groups:
-                group = self.ec2_backend.get_security_group_by_name_or_id(group_name)
-                if group:
+                if group := self.ec2_backend.get_security_group_by_name_or_id(
+                    group_name
+                ):
                     self.launch_specification.groups.append(group)
         else:
             # If not security groups, add the default
@@ -138,8 +139,7 @@ class SpotInstanceRequest(TaggedEC2Resource):
             tags=self.all_tags,
             lifecycle="spot",
         )
-        instance = reservation.instances[0]
-        return instance
+        return reservation.instances[0]
 
 
 class SpotFleetLaunchSpec:
@@ -169,7 +169,7 @@ class SpotFleetLaunchSpec:
         self.subnet_id = subnet_id
         self.tag_specifications = tag_specifications
         self.user_data = user_data
-        self.weighted_capacity = float(weighted_capacity)
+        self.weighted_capacity = weighted_capacity
 
 
 class SpotFleetRequest(TaggedEC2Resource, CloudFormationModel):
@@ -278,15 +278,13 @@ class SpotFleetRequest(TaggedEC2Resource, CloudFormationModel):
         allocation_strategy = properties["AllocationStrategy"]
         launch_specs = properties["LaunchSpecifications"]
 
-        spot_fleet_request = ec2_backend.request_spot_fleet(
+        return ec2_backend.request_spot_fleet(
             spot_price,
             target_capacity,
             iam_fleet_role,
             allocation_strategy,
             launch_specs,
         )
-
-        return spot_fleet_request
 
     def get_launch_spec_counts(
         self, weight_to_add: float
@@ -442,10 +440,10 @@ class SpotRequestBackend:
     def cancel_spot_instance_requests(
         self, request_ids: List[str]
     ) -> List[SpotInstanceRequest]:
-        requests = []
-        for request_id in request_ids:
-            requests.append(self.spot_instance_requests.pop(request_id))
-        return requests
+        return [
+            self.spot_instance_requests.pop(request_id)
+            for request_id in request_ids
+        ]
 
     def request_spot_fleet(
         self,
@@ -483,9 +481,7 @@ class SpotRequestBackend:
         self, spot_fleet_request_id: str
     ) -> List[SpotInstanceRequest]:
         spot_fleet = self.get_spot_fleet_request(spot_fleet_request_id)
-        if not spot_fleet:
-            return []
-        return spot_fleet.spot_requests
+        return [] if not spot_fleet else spot_fleet.spot_requests
 
     def describe_spot_fleet_requests(
         self, spot_fleet_request_ids: List[str]
@@ -542,7 +538,7 @@ class SpotRequestBackend:
                 else:
                     return False
 
-            return all([matches_filter(key, values) for key, values in filters.items()])
+            return all(matches_filter(key, values) for key, values in filters.items())
 
         matches = [o for o in matches if matches_filters(o, filters)]
 

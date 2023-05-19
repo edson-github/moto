@@ -40,7 +40,7 @@ class SecurityRule:
     ):
         self.account_id = account_id
         self.id = random_security_group_rule_id()
-        self.ip_protocol = str(ip_protocol) if ip_protocol else None
+        self.ip_protocol = ip_protocol if ip_protocol else None
         self.ip_ranges = ip_ranges or []
         self.source_groups = source_groups or []
         self.prefix_list_ids = prefix_list_ids or []
@@ -273,10 +273,9 @@ class SecurityGroup(TaggedEC2Resource, CloudFormationModel):
         from ..models import ec2_backends
 
         ec2_backend = ec2_backends[account_id][region_name]
-        security_group = ec2_backend.get_security_group_by_name_or_id(
+        if security_group := ec2_backend.get_security_group_by_name_or_id(
             resource_name, vpc_id
-        )
-        if security_group:
+        ):
             security_group.delete(account_id, region_name)
 
     def delete(
@@ -290,10 +289,7 @@ class SecurityGroup(TaggedEC2Resource, CloudFormationModel):
         return self.id
 
     def filter_description(self, values: List[Any]) -> bool:
-        for value in values:
-            if aws_api_matches(value, self.description):
-                return True
-        return False
+        return any(aws_api_matches(value, self.description) for value in values)
 
     def filter_egress__ip_permission__cidr(self, values: List[Any]) -> bool:
         for value in values:
@@ -356,16 +352,10 @@ class SecurityGroup(TaggedEC2Resource, CloudFormationModel):
         return False
 
     def filter_group_id(self, values: List[Any]) -> bool:
-        for value in values:
-            if aws_api_matches(value, self.id):
-                return True
-        return False
+        return any(aws_api_matches(value, self.id) for value in values)
 
     def filter_group_name(self, values: List[Any]) -> bool:
-        for value in values:
-            if aws_api_matches(value, self.group_name):
-                return True
-        return False
+        return any(aws_api_matches(value, self.group_name) for value in values)
 
     def filter_ip_permission__cidr(self, values: List[Any]) -> bool:
         for value in values:
@@ -426,35 +416,25 @@ class SecurityGroup(TaggedEC2Resource, CloudFormationModel):
         return False
 
     def filter_owner_id(self, values: List[Any]) -> bool:
-        for value in values:
-            if aws_api_matches(value, self.owner_id):
-                return True
-        return False
+        return any(aws_api_matches(value, self.owner_id) for value in values)
 
     def filter_vpc_id(self, values: List[Any]) -> bool:
-        for value in values:
-            if aws_api_matches(value, self.vpc_id):
-                return True
-        return False
+        return any(aws_api_matches(value, self.vpc_id) for value in values)
 
     def matches_filter(self, key: str, filter_value: Any) -> Any:
-        if is_tag_filter(key):
-            tag_value = self.get_filter_value(key)
-            if isinstance(filter_value, list):
-                return tag_filter_matches(self, key, filter_value)
-            return tag_value in filter_value
-        else:
+        if not is_tag_filter(key):
             return self.filters[key](filter_value)
+        tag_value = self.get_filter_value(key)
+        if isinstance(filter_value, list):
+            return tag_filter_matches(self, key, filter_value)
+        return tag_value in filter_value
 
     def matches_filters(self, filters: Any) -> bool:
-        for key, value in filters.items():
-            if not self.matches_filter(key, value):
-                return False
-        return True
+        return all(self.matches_filter(key, value) for key, value in filters.items())
 
     @classmethod
     def has_cfn_attr(cls, attr: str) -> bool:
-        return attr in ["GroupId"]
+        return attr in {"GroupId"}
 
     def get_cfn_attribute(self, attribute_name: str) -> str:
         from moto.cloudformation.exceptions import UnformattedGetAttTemplateException
@@ -507,8 +487,9 @@ class SecurityGroupBackend:
 
         group_id = random_security_group_id()
         if not force:
-            existing_group = self.get_security_group_by_name_or_id(name, vpc_id)
-            if existing_group:
+            if existing_group := self.get_security_group_by_name_or_id(
+                name, vpc_id
+            ):
                 raise InvalidSecurityGroupDuplicateError(name)
         group = SecurityGroup(
             self,
@@ -577,10 +558,7 @@ class SecurityGroupBackend:
                     return self._delete_security_group(vpc_id, group_id)
             raise InvalidSecurityGroupNotFoundError(group_id)
         elif name:
-            # Group Name.  Has to be in standard EC2, VPC needs to be
-            # identified by group_id
-            group = self.get_security_group_by_name_or_id(name)
-            if group:
+            if group := self.get_security_group_by_name_or_id(name):
                 return self._delete_security_group(None, group.id)
             raise InvalidSecurityGroupNotFoundError(name)
 
@@ -589,10 +567,7 @@ class SecurityGroupBackend:
         all_groups = itertools.chain.from_iterable(
             [x.copy().values() for x in self.groups.copy().values()]
         )
-        for group in all_groups:
-            if group.id == group_id:
-                return group
-        return None
+        return next((group for group in all_groups if group.id == group_id), None)
 
     def get_security_group_from_name(
         self, name: str, vpc_id: Optional[str] = None
@@ -621,10 +596,14 @@ class SecurityGroupBackend:
     def get_default_security_group(
         self, vpc_id: Optional[str] = None
     ) -> Optional[SecurityGroup]:
-        for group in self.groups[vpc_id or self.default_vpc.id].values():  # type: ignore[attr-defined]
-            if group.is_default:
-                return group
-        return None
+        return next(
+            (
+                group
+                for group in self.groups[vpc_id or self.default_vpc.id].values()
+                if group.is_default
+            ),
+            None,
+        )
 
     def authorize_security_group_ingress(
         self,
@@ -915,7 +894,7 @@ class SecurityGroupBackend:
 
         if group.vpc_id:
             vpc = self.vpcs.get(group.vpc_id)  # type: ignore[attr-defined]
-            if vpc and not len(vpc.get_cidr_block_association_set(ipv6=True)) > 0:
+            if vpc and len(vpc.get_cidr_block_association_set(ipv6=True)) <= 0:
                 for item in ip_ranges.copy():
                     if "CidrIpv6" in item:
                         ip_ranges.remove(item)
@@ -1137,15 +1116,14 @@ class SecurityGroupBackend:
                 if not self.get_security_group_by_name_or_id(item["GroupId"], vpc_id):
                     raise InvalidSecurityGroupNotFoundError(item["GroupId"])
             if "GroupName" in item:
-                source_group = self.get_security_group_by_name_or_id(
+                if source_group := self.get_security_group_by_name_or_id(
                     item["GroupName"], vpc_id
-                )
-                if not source_group:
-                    raise InvalidSecurityGroupNotFoundError(item["GroupName"])
-                else:
+                ):
                     item["GroupId"] = source_group.id
                     item.pop("GroupName")
 
+                else:
+                    raise InvalidSecurityGroupNotFoundError(item["GroupName"])
             _source_groups.append(item)
         return _source_groups
 
@@ -1226,11 +1204,7 @@ class SecurityGroupIngress(CloudFormationModel):
             source_group["GroupId"] = source_security_group_id
         if source_security_group_name:
             source_group["GroupName"] = source_security_group_name
-        if cidr_ip:
-            ip_ranges = [{"CidrIp": cidr_ip, "Description": cidr_desc}]
-        else:
-            ip_ranges = []
-
+        ip_ranges = [{"CidrIp": cidr_ip, "Description": cidr_desc}] if cidr_ip else []
         if group_id:
             security_group = ec2_backend.describe_security_groups(group_ids=[group_id])[
                 0

@@ -127,11 +127,11 @@ class AWSCertificateManagerResponse(BaseResponse):
         return json.dumps({"CertificateArn": arn})
 
     def list_certificates(self) -> str:
-        certs = []
         statuses = self._get_param("CertificateStatuses")
-        for cert_bundle in self.acm_backend.get_certificates_list(statuses):
-            certs.append(cert_bundle.describe()["Certificate"])
-
+        certs = [
+            cert_bundle.describe()["Certificate"]
+            for cert_bundle in self.acm_backend.get_certificates_list(statuses)
+        ]
         result = {"CertificateSummaryList": certs}
         return json.dumps(result)
 

@@ -27,13 +27,12 @@ class CustomRegistry(responses.registries.FirstMatchRegistry):
             else:
                 match_failed_reasons.append(reason)
 
-        # Look for implemented callbacks first
-        implemented_matches = [
+        if implemented_matches := [
             m
             for m in found
-            if type(m) is not CallbackResponse or m.callback != not_implemented_callback
-        ]
-        if implemented_matches:
+            if type(m) is not CallbackResponse
+            or m.callback != not_implemented_callback
+        ]:
             return implemented_matches[0], match_failed_reasons
         elif found:
             # We had matches, but all were of type not_implemented_callback

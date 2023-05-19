@@ -69,11 +69,10 @@ class NatGateway(CloudFormationModel, TaggedEC2Resource):
         from ..models import ec2_backends
 
         ec2_backend = ec2_backends[account_id][region_name]
-        nat_gateway = ec2_backend.create_nat_gateway(
+        return ec2_backend.create_nat_gateway(
             cloudformation_json["Properties"]["SubnetId"],
             cloudformation_json["Properties"]["AllocationId"],
         )
-        return nat_gateway
 
 
 class NatGatewayBackend:

@@ -55,7 +55,7 @@ class ComprehendBackend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.recognizers: Dict[str, EntityRecognizer] = dict()
+        self.recognizers: Dict[str, EntityRecognizer] = {}
         self.tagger = TaggingService()
 
     def list_entity_recognizers(

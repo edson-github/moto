@@ -105,10 +105,10 @@ class CloudFormationResponse(BaseResponse):
         timeout_in_mins = self._get_param("TimeoutInMinutes")
         stack_policy_body = self._get_param("StackPolicyBody")
         parameters_list = self._get_list_prefix("Parameters.member")
-        tags = dict(
-            (item["key"], item["value"])
+        tags = {
+            item["key"]: item["value"]
             for item in self._get_list_prefix("Tags.member")
-        )
+        }
 
         if self.stack_name_exists(new_stack_name=stack_name):
             template = self.response_template(
@@ -141,15 +141,14 @@ class CloudFormationResponse(BaseResponse):
                     }
                 }
             )
-        else:
-            template = self.response_template(CREATE_STACK_RESPONSE_TEMPLATE)
-            return template.render(stack=stack)
+        template = self.response_template(CREATE_STACK_RESPONSE_TEMPLATE)
+        return template.render(stack=stack)
 
     def stack_name_exists(self, new_stack_name: str) -> bool:
-        for stack in self.cloudformation_backend.stacks.values():
-            if stack.name == new_stack_name:
-                return True
-        return False
+        return any(
+            stack.name == new_stack_name
+            for stack in self.cloudformation_backend.stacks.values()
+        )
 
     @amzn_request_id
     def create_change_set(self) -> str:
@@ -161,10 +160,10 @@ class CloudFormationResponse(BaseResponse):
         role_arn = self._get_param("RoleARN")
         update_or_create = self._get_param("ChangeSetType", "CREATE")
         parameters_list = self._get_list_prefix("Parameters.member")
-        tags = dict(
-            (item["key"], item["value"])
+        tags = {
+            item["key"]: item["value"]
             for item in self._get_list_prefix("Tags.member")
-        )
+        }
         parameters = {
             param["parameter_key"]: param["parameter_value"]
             for param in parameters_list
@@ -194,9 +193,8 @@ class CloudFormationResponse(BaseResponse):
                     }
                 }
             )
-        else:
-            template = self.response_template(CREATE_CHANGE_SET_RESPONSE_TEMPLATE)
-            return template.render(stack_id=stack_id, change_set_id=change_set_id)
+        template = self.response_template(CREATE_CHANGE_SET_RESPONSE_TEMPLATE)
+        return template.render(stack_id=stack_id, change_set_id=change_set_id)
 
     def delete_change_set(self) -> str:
         change_set_name = self._get_param("ChangeSetName")
@@ -206,9 +204,8 @@ class CloudFormationResponse(BaseResponse):
             return json.dumps(
                 {"DeleteChangeSetResponse": {"DeleteChangeSetResult": {}}}
             )
-        else:
-            template = self.response_template(DELETE_CHANGE_SET_RESPONSE_TEMPLATE)
-            return template.render()
+        template = self.response_template(DELETE_CHANGE_SET_RESPONSE_TEMPLATE)
+        return template.render()
 
     def describe_change_set(self) -> str:
         change_set_name = self._get_param("ChangeSetName")
@@ -229,19 +226,15 @@ class CloudFormationResponse(BaseResponse):
             return json.dumps(
                 {"ExecuteChangeSetResponse": {"ExecuteChangeSetResult": {}}}
             )
-        else:
-            template = self.response_template(EXECUTE_CHANGE_SET_RESPONSE_TEMPLATE)
-            return template.render()
+        template = self.response_template(EXECUTE_CHANGE_SET_RESPONSE_TEMPLATE)
+        return template.render()
 
     def describe_stacks(self) -> str:
         stack_name_or_id = self._get_param("StackName")
         token = self._get_param("NextToken")
         stacks = self.cloudformation_backend.describe_stacks(stack_name_or_id)
         stack_ids = [stack.stack_id for stack in stacks]
-        if token:
-            start = stack_ids.index(token) + 1
-        else:
-            start = 0
+        start = stack_ids.index(token) + 1 if token else 0
         max_results = 50  # using this to mske testing of paginated stacks more convenient than default 1 MB
         stacks_resp = stacks[start : start + max_results]
         next_token = None
@@ -311,9 +304,8 @@ class CloudFormationResponse(BaseResponse):
                     }
                 }
             )
-        else:
-            template = self.response_template(GET_TEMPLATE_RESPONSE_TEMPLATE)
-            return template.render(stack_template=stack_template)
+        template = self.response_template(GET_TEMPLATE_RESPONSE_TEMPLATE)
+        return template.render(stack_template=stack_template)
 
     def get_template_summary(self) -> str:
         stack_name = self._get_param("StackName")
@@ -369,10 +361,10 @@ class CloudFormationResponse(BaseResponse):
         # boto3 is supposed to let you clear the tags by passing an empty value, but the request body doesn't
         # end up containing anything we can use to differentiate between passing an empty value versus not
         # passing anything. so until that changes, moto won't be able to clear tags, only update them.
-        tags: Optional[Dict[str, str]] = dict(
-            (item["key"], item["value"])
+        tags: Optional[Dict[str, str]] = {
+            item["key"]: item["value"]
             for item in self._get_list_prefix("Tags.member")
-        )
+        }
         # so that if we don't pass the parameter, we don't clear all the tags accidentally
         if not tags:
             tags = None
@@ -403,9 +395,8 @@ class CloudFormationResponse(BaseResponse):
         self.cloudformation_backend.delete_stack(name_or_stack_id)
         if self.request_json:
             return json.dumps({"DeleteStackResponse": {"DeleteStackResult": {}}})
-        else:
-            template = self.response_template(DELETE_STACK_RESPONSE_TEMPLATE)
-            return template.render()
+        template = self.response_template(DELETE_STACK_RESPONSE_TEMPLATE)
+        return template.render()
 
     def list_exports(self) -> str:
         token = self._get_param("NextToken")
@@ -415,12 +406,12 @@ class CloudFormationResponse(BaseResponse):
 
     def validate_template(self) -> str:
         template_body = self._get_param("TemplateBody")
-        template_url = self._get_param("TemplateURL")
-        if template_url:
+        if template_url := self._get_param("TemplateURL"):
             template_body = self._get_stack_from_s3_url(template_url)
 
-        cfn_lint = self.cloudformation_backend.validate_template(template_body)
-        if cfn_lint:
+        if cfn_lint := self.cloudformation_backend.validate_template(
+            template_body
+        ):
             raise ValidationError(cfn_lint[0].message)
         description = ""
         try:
@@ -447,10 +438,10 @@ class CloudFormationResponse(BaseResponse):
         admin_role = self._get_param("AdministrationRoleARN")
         exec_role = self._get_param("ExecutionRoleName")
         description = self._get_param("Description")
-        tags = dict(
-            (item["key"], item["value"])
+        tags = {
+            item["key"]: item["value"]
             for item in self._get_list_prefix("Tags.member")
-        )
+        }
 
         # Copy-Pasta - Hack dict-comprehension
         parameters = dict(
@@ -480,9 +471,8 @@ class CloudFormationResponse(BaseResponse):
                     }
                 }
             )
-        else:
-            template = self.response_template(CREATE_STACK_SET_RESPONSE_TEMPLATE)
-            return template.render(stackset=stackset)
+        template = self.response_template(CREATE_STACK_SET_RESPONSE_TEMPLATE)
+        return template.render(stackset=stackset)
 
     def create_stack_instances(self) -> str:
         stackset_name = self._get_param("StackSetName")
@@ -547,8 +537,7 @@ class CloudFormationResponse(BaseResponse):
             stackset_name, account, region
         )
         template = self.response_template(DESCRIBE_STACK_INSTANCE_TEMPLATE)
-        rendered = template.render(instance=instance)
-        return rendered
+        return template.render(instance=instance)
 
     def list_stack_sets(self) -> str:
         stacksets = self.cloudformation_backend.list_stack_sets()
@@ -607,13 +596,12 @@ class CloudFormationResponse(BaseResponse):
         accounts = self._get_multi_param("Accounts.member")
         regions = self._get_multi_param("Regions.member")
         template_body = self._get_param("TemplateBody")
-        template_url = self._get_param("TemplateURL")
-        if template_url:
+        if template_url := self._get_param("TemplateURL"):
             template_body = self._get_stack_from_s3_url(template_url)
-        tags = dict(
-            (item["key"], item["value"])
+        tags = {
+            item["key"]: item["value"]
             for item in self._get_list_prefix("Tags.member")
-        )
+        }
         parameters_list = self._get_list_prefix("Parameters.member")
 
         operation = self.cloudformation_backend.update_stack_set(

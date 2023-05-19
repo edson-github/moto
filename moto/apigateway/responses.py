@@ -40,10 +40,10 @@ class APIGatewayResponse(BaseResponse):
 
     def __validate_endpoint_configuration(self, endpoint_configuration: Dict[str, str]) -> TYPE_RESPONSE:  # type: ignore[return]
         if endpoint_configuration and "types" in endpoint_configuration:
-            invalid_types = list(
-                set(endpoint_configuration["types"]) - set(ENDPOINT_CONFIGURATION_TYPES)
-            )
-            if invalid_types:
+            if invalid_types := list(
+                set(endpoint_configuration["types"])
+                - set(ENDPOINT_CONFIGURATION_TYPES)
+            ):
                 return self.error(
                     "ValidationException",
                     (
@@ -61,8 +61,7 @@ class APIGatewayResponse(BaseResponse):
             apis = self.backend.list_apis()
             return 200, {}, json.dumps({"item": [api.to_dict() for api in apis]})
         elif self.method == "POST":
-            api_doc = deserialize_body(self.body)
-            if api_doc:
+            if api_doc := deserialize_body(self.body):
                 fail_on_warnings = self._get_bool_param("failonwarnings") or False
                 rest_api = self.backend.import_rest_api(api_doc, fail_on_warnings)
 
@@ -453,10 +452,9 @@ class APIGatewayResponse(BaseResponse):
         method_type = url_path_parts[6]
 
         if self.method == "GET":
-            integration_response = self.backend.get_integration(
+            if integration_response := self.backend.get_integration(
                 function_id, resource_id, method_type
-            )
-            if integration_response:
+            ):
                 return 200, {}, json.dumps(integration_response.to_json())
             return 200, {}, "{}"
         elif self.method == "PUT":
@@ -873,4 +871,4 @@ class APIGatewayResponse(BaseResponse):
         self.backend.delete_gateway_response(
             rest_api_id=rest_api_id, response_type=response_type
         )
-        return 202, {}, json.dumps(dict())
+        return 202, {}, json.dumps({})

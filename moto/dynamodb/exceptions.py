@@ -283,7 +283,7 @@ class TooManyAddClauses(InvalidUpdateExpression):
 
 class ResourceNotFoundException(JsonRESTError):
     def __init__(self, msg: Optional[str] = None, table_name: Optional[str] = None):
-        err = ERROR_TYPE_PREFIX + "ResourceNotFoundException"
+        err = f"{ERROR_TYPE_PREFIX}ResourceNotFoundException"
         default_msg = "Requested resource not found"
         if table_name is not None:
             default_msg += f": Table: {table_name} not found"
@@ -292,37 +292,37 @@ class ResourceNotFoundException(JsonRESTError):
 
 class TableNotFoundException(JsonRESTError):
     def __init__(self, name: str):
-        err = ERROR_TYPE_PREFIX + "TableNotFoundException"
+        err = f"{ERROR_TYPE_PREFIX}TableNotFoundException"
         super().__init__(err, f"Table not found: {name}")
 
 
 class SourceTableNotFoundException(JsonRESTError):
     def __init__(self, source_table_name: str):
-        er = ERROR_TYPE_PREFIX + "SourceTableNotFoundException"
+        er = f"{ERROR_TYPE_PREFIX}SourceTableNotFoundException"
         super().__init__(er, f"Source table not found: {source_table_name}")
 
 
 class BackupNotFoundException(JsonRESTError):
     def __init__(self, backup_arn: str):
-        er = ERROR_TYPE_PREFIX + "BackupNotFoundException"
+        er = f"{ERROR_TYPE_PREFIX}BackupNotFoundException"
         super().__init__(er, f"Backup not found: {backup_arn}")
 
 
 class TableAlreadyExistsException(JsonRESTError):
     def __init__(self, target_table_name: str):
-        er = ERROR_TYPE_PREFIX + "TableAlreadyExistsException"
+        er = f"{ERROR_TYPE_PREFIX}TableAlreadyExistsException"
         super().__init__(er, f"Table already exists: {target_table_name}")
 
 
 class ResourceInUseException(JsonRESTError):
     def __init__(self, msg: Optional[str] = None) -> None:
-        er = ERROR_TYPE_PREFIX + "ResourceInUseException"
+        er = f"{ERROR_TYPE_PREFIX}ResourceInUseException"
         super().__init__(er, msg or "Resource in use")
 
 
 class StreamAlreadyEnabledException(JsonRESTError):
     def __init__(self) -> None:
-        er = ERROR_TYPE_PREFIX + "ResourceInUseException"
+        er = f"{ERROR_TYPE_PREFIX}ResourceInUseException"
         super().__init__(er, "Cannot enable stream")
 
 

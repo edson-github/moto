@@ -45,7 +45,7 @@ class Policy:
             )
         # Remove #LATEST from the Resource (Lambda ARN)
         if policy.statements[0].get("Resource", "").endswith("$LATEST"):
-            policy.statements[0]["Resource"] = policy.statements[0]["Resource"][0:-8]
+            policy.statements[0]["Resource"] = policy.statements[0]["Resource"][:-8]
         if qualifier:
             policy.statements[0]["Resource"] = (
                 policy.statements[0]["Resource"] + ":" + qualifier
@@ -56,7 +56,7 @@ class Policy:
 
     # removes the statement that matches 'sid' from the policy
     def del_statement(self, sid: str, revision: str = "") -> None:
-        if len(revision) > 0 and self.revision != revision:
+        if revision != "" and self.revision != revision:
             raise PreconditionFailedException(
                 "The RevisionId provided does not match the latest RevisionId"
                 " for the Lambda function or alias. Call the GetFunction or the GetAlias API to retrieve"
@@ -79,7 +79,7 @@ class Policy:
 
         # set some default values if these keys are not set
         self.ensure_set(obj, "Effect", "Allow")
-        self.ensure_set(obj, "Resource", self.parent.function_arn + ":$LATEST")
+        self.ensure_set(obj, "Resource", f"{self.parent.function_arn}:$LATEST")
         self.ensure_set(obj, "StatementId", str(mock_random.uuid4()))
 
         # transform field names and values

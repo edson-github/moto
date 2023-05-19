@@ -56,12 +56,10 @@ class CognitoIdentityBackend(BaseBackend):
         self.pools_identities: Dict[str, Dict[str, Any]] = {}
 
     def describe_identity_pool(self, identity_pool_id: str) -> str:
-        identity_pool = self.identity_pools.get(identity_pool_id, None)
-
-        if not identity_pool:
+        if identity_pool := self.identity_pools.get(identity_pool_id, None):
+            return identity_pool.to_json()
+        else:
             raise ResourceNotFoundError(identity_pool_id)
-
-        return identity_pool.to_json()
 
     def create_identity_pool(
         self,
