@@ -65,11 +65,13 @@ class DynamoType(object):
         if self.is_list():
             self.value = [DynamoType(val) for val in self.value]
         elif self.is_map():
-            self.value = dict((k, DynamoType(v)) for k, v in self.value.items())
+            self.value = {k: DynamoType(v) for k, v in self.value.items()}
 
     def filter(self, projection_expressions: str) -> None:
         nested_projections = [
-            expr[0 : expr.index(".")] for expr in projection_expressions if "." in expr
+            expr[: expr.index(".")]
+            for expr in projection_expressions
+            if "." in expr
         ]
         if self.is_map():
             expressions_to_delete = []
@@ -81,9 +83,9 @@ class DynamoType(object):
                     expressions_to_delete.append(attr)
                 elif attr in nested_projections:
                     relevant_expressions = [
-                        expr[len(attr + ".") :]
+                        expr[len(f"{attr}.") :]
                         for expr in projection_expressions
-                        if expr.startswith(attr + ".")
+                        if expr.startswith(f"{attr}.")
                     ]
                     self.value[attr].filter(relevant_expressions)
             for expr in expressions_to_delete:
@@ -116,32 +118,30 @@ class DynamoType(object):
     def __add__(self, other: "DynamoType") -> "DynamoType":
         if self.type != other.type:
             raise TypeError("Different types of operandi is not allowed.")
-        if self.is_number():
-            self_value = float(self.value) if "." in self.value else int(self.value)
-            other_value = float(other.value) if "." in other.value else int(other.value)
-            return DynamoType({DDBType.NUMBER: f"{self_value + other_value}"})
-        else:
+        if not self.is_number():
             raise IncorrectDataType()
+        self_value = float(self.value) if "." in self.value else int(self.value)
+        other_value = float(other.value) if "." in other.value else int(other.value)
+        return DynamoType({DDBType.NUMBER: f"{self_value + other_value}"})
 
     def __sub__(self, other: "DynamoType") -> "DynamoType":
         if self.type != other.type:
             raise TypeError("Different types of operandi is not allowed.")
-        if self.type == DDBType.NUMBER:
-            self_value = float(self.value) if "." in self.value else int(self.value)
-            other_value = float(other.value) if "." in other.value else int(other.value)
-            return DynamoType({DDBType.NUMBER: f"{self_value - other_value}"})
-        else:
+        if self.type != DDBType.NUMBER:
             raise TypeError("Sum only supported for Numbers.")
+        self_value = float(self.value) if "." in self.value else int(self.value)
+        other_value = float(other.value) if "." in other.value else int(other.value)
+        return DynamoType({DDBType.NUMBER: f"{self_value - other_value}"})
 
     def __getitem__(self, item: "DynamoType") -> "DynamoType":
-        if isinstance(item, str):
-            # If our DynamoType is a map it should be subscriptable with a key
-            if self.type == DDBType.MAP:
-                return self.value[item]
-        elif isinstance(item, int):
-            # If our DynamoType is a list is should be subscriptable with an index
-            if self.type == DDBType.LIST:
-                return self.value[item]
+        if (
+            isinstance(item, str)
+            and self.type == DDBType.MAP
+            or not isinstance(item, str)
+            and isinstance(item, int)
+            and self.type == DDBType.LIST
+        ):
+            return self.value[item]
         raise TypeError(
             f"This DynamoType {self.type} is not subscriptable by a {type(item)}"
         )
@@ -169,7 +169,7 @@ class DynamoType(object):
                 return float(self.value)
         elif self.is_set():
             sub_type = self.type[0]
-            return set([DynamoType({sub_type: v}).cast_value for v in self.value])
+            return {DynamoType({sub_type: v}).cast_value for v in self.value}
         elif self.is_list():
             return [DynamoType(v).cast_value for v in self.value]
         elif self.is_map():
@@ -196,21 +196,18 @@ class DynamoType(object):
 
     def size(self) -> int:
         if self.is_number():
-            value_size = len(str(self.value))
+            return len(str(self.value))
         elif self.is_set():
             sub_type = self.type[0]
-            value_size = sum([DynamoType({sub_type: v}).size() for v in self.value])
+            return sum(DynamoType({sub_type: v}).size() for v in self.value)
         elif self.is_list():
-            value_size = sum([v.size() for v in self.value])
+            return sum(v.size() for v in self.value)
         elif self.is_map():
-            value_size = sum(
-                [bytesize(k) + DynamoType(v).size() for k, v in self.value.items()]
-            )
+            return sum(bytesize(k) + DynamoType(v).size() for k, v in self.value.items())
         elif type(self.value) == bool:
-            value_size = 1
+            return 1
         else:
-            value_size = bytesize(self.value)
-        return value_size
+            return bytesize(self.value)
 
     def to_json(self) -> Dict[str, Any]:
         return {self.type: self.value}
@@ -255,10 +252,8 @@ class LimitedSizeDict(Dict[str, Any]):
 
     def __setitem__(self, key: str, value: Any) -> None:
         current_item_size = sum(
-            [
-                item.size() if type(item) == DynamoType else bytesize(str(item))
-                for item in (list(self.keys()) + list(self.values()))
-            ]
+            item.size() if type(item) == DynamoType else bytesize(str(item))
+            for item in (list(self.keys()) + list(self.values()))
         )
         new_item_size = bytesize(key) + (
             value.size() if type(value) == DynamoType else bytesize(str(value))
@@ -301,26 +296,27 @@ class Item(BaseModel):
         return sum(bytesize(key) + value.size() for key, value in self.attrs.items())
 
     def to_json(self) -> Dict[str, Any]:
-        attributes = {}
-        for attribute_key, attribute in self.attrs.items():
-            attributes[attribute_key] = {attribute.type: attribute.value}
-
+        attributes = {
+            attribute_key: {attribute.type: attribute.value}
+            for attribute_key, attribute in self.attrs.items()
+        }
         return {"Attributes": attributes}
 
     def to_regular_json(self) -> Dict[str, Any]:
-        attributes = {}
-        for key, attribute in self.attrs.items():
-            attributes[key] = deserializer.deserialize(attribute.to_json())
-        return attributes
+        return {
+            key: deserializer.deserialize(attribute.to_json())
+            for key, attribute in self.attrs.items()
+        }
 
     def describe_attrs(
         self, attributes: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Dict[str, Any]]:
         if attributes:
-            included = {}
-            for key, value in self.attrs.items():
-                if key in attributes:
-                    included[key] = value
+            included = {
+                key: value
+                for key, value in self.attrs.items()
+                if key in attributes
+            }
         else:
             included = self.attrs
         return {"Item": included}
@@ -349,23 +345,23 @@ class Item(BaseModel):
             new_value = list(update_action["Value"].values())[0]
             if action == "PUT":
                 # TODO deal with other types
-                if set(update_action["Value"].keys()) == set(["SS"]):
+                if set(update_action["Value"].keys()) == {"SS"}:
                     self.attrs[attribute_name] = DynamoType({"SS": new_value})
-                elif set(update_action["Value"].keys()) == set(["NS"]):
+                elif set(update_action["Value"].keys()) == {"NS"}:
                     self.attrs[attribute_name] = DynamoType({"NS": new_value})
                 elif isinstance(new_value, list):
                     self.attrs[attribute_name] = DynamoType({"L": new_value})
                 elif isinstance(new_value, dict):
                     self.attrs[attribute_name] = DynamoType({"M": new_value})
-                elif set(update_action["Value"].keys()) == set(["N"]):
+                elif set(update_action["Value"].keys()) == {"N"}:
                     self.attrs[attribute_name] = DynamoType({"N": new_value})
-                elif set(update_action["Value"].keys()) == set(["NULL"]):
+                elif set(update_action["Value"].keys()) == {"NULL"}:
                     if attribute_name in self.attrs:
                         del self.attrs[attribute_name]
                 else:
                     self.attrs[attribute_name] = DynamoType({"S": new_value})
             elif action == "ADD":
-                if set(update_action["Value"].keys()) == set(["N"]):
+                if set(update_action["Value"].keys()) == {"N"}:
                     existing = self.attrs.get(attribute_name, DynamoType({"N": "0"}))
                     self.attrs[attribute_name] = DynamoType(
                         {
@@ -375,11 +371,11 @@ class Item(BaseModel):
                             )
                         }
                     )
-                elif set(update_action["Value"].keys()) == set(["SS"]):
+                elif set(update_action["Value"].keys()) == {"SS"}:
                     existing = self.attrs.get(attribute_name, DynamoType({"SS": {}}))
                     new_set = set(existing.value).union(set(new_value))
                     self.attrs[attribute_name] = DynamoType({"SS": list(new_set)})
-                elif set(update_action["Value"].keys()) == set(["NS"]):
+                elif set(update_action["Value"].keys()) == {"NS"}:
                     existing = self.attrs.get(attribute_name, DynamoType({"NS": {}}))
                     new_set = set(existing.value).union(set(new_value))
                     self.attrs[attribute_name] = DynamoType({"NS": list(new_set)})
@@ -390,22 +386,20 @@ class Item(BaseModel):
                 else:
                     # TODO: implement other data types
                     raise NotImplementedError(
-                        "ADD not supported for %s"
-                        % ", ".join(update_action["Value"].keys())
+                        f'ADD not supported for {", ".join(update_action["Value"].keys())}'
                     )
             elif action == "DELETE":
-                if set(update_action["Value"].keys()) == set(["SS"]):
+                if set(update_action["Value"].keys()) == {"SS"}:
                     existing = self.attrs.get(attribute_name, DynamoType({"SS": {}}))
                     new_set = set(existing.value).difference(set(new_value))
                     self.attrs[attribute_name] = DynamoType({"SS": list(new_set)})
-                elif set(update_action["Value"].keys()) == set(["NS"]):
+                elif set(update_action["Value"].keys()) == {"NS"}:
                     existing = self.attrs.get(attribute_name, DynamoType({"NS": {}}))
                     new_set = set(existing.value).difference(set(new_value))
                     self.attrs[attribute_name] = DynamoType({"NS": list(new_set)})
                 else:
                     raise NotImplementedError(
-                        "ADD not supported for %s"
-                        % ", ".join(update_action["Value"].keys())
+                        f'ADD not supported for {", ".join(update_action["Value"].keys())}'
                     )
             else:
                 raise NotImplementedError(
@@ -417,15 +411,15 @@ class Item(BaseModel):
     def filter(self, projection_expression: str) -> None:
         expressions = [x.strip() for x in projection_expression.split(",")]
         top_level_expressions = [
-            expr[0 : expr.index(".")] for expr in expressions if "." in expr
+            expr[: expr.index(".")] for expr in expressions if "." in expr
         ]
         for attr in list(self.attrs):
             if attr not in expressions and attr not in top_level_expressions:
                 self.attrs.pop(attr)
             if attr in top_level_expressions:
                 relevant_expressions = [
-                    expr[len(attr + ".") :]
+                    expr[len(f"{attr}.") :]
                     for expr in expressions
-                    if expr.startswith(attr + ".")
+                    if expr.startswith(f"{attr}.")
                 ]
                 self.attrs[attr].filter(relevant_expressions)

@@ -144,7 +144,7 @@ class ApplicationAutoScalingResponse(BaseResponse):
             resource_id=resource_id,
             scalable_dimension=scalable_dimension,
         )
-        return json.dumps(dict())
+        return json.dumps({})
 
     def put_scheduled_action(self) -> str:
         params = json.loads(self.body)
@@ -168,7 +168,7 @@ class ApplicationAutoScalingResponse(BaseResponse):
             end_time=end_time,
             scalable_target_action=scalable_target_action,
         )
-        return json.dumps(dict())
+        return json.dumps({})
 
     def describe_scheduled_actions(self) -> str:
         params = json.loads(self.body)
@@ -223,7 +223,7 @@ def _build_policy(p: FakeApplicationAutoscalingPolicy) -> Dict[str, Any]:
 
 
 def _build_scheduled_action(a: FakeScheduledAction) -> Dict[str, Any]:
-    response = {
+    return {
         "ScheduledActionName": a.scheduled_action_name,
         "ScheduledActionARN": a.arn,
         "ServiceNamespace": a.service_namespace,
@@ -236,4 +236,3 @@ def _build_scheduled_action(a: FakeScheduledAction) -> Dict[str, Any]:
         "CreationTime": a.creation_time,
         "ScalableTargetAction": a.scalable_target_action,
     }
-    return response

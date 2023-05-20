@@ -25,10 +25,7 @@ class ElasticAddress(TaggedEC2Resource, CloudFormationModel):
         tags: Optional[Dict[str, str]] = None,
     ):
         self.ec2_backend = ec2_backend
-        if address:
-            self.public_ip = address
-        else:
-            self.public_ip = random_ip()
+        self.public_ip = address if address else random_ip()
         self.allocation_id = random_eip_allocation_id() if domain == "vpc" else None
         self.id = self.allocation_id
         self.domain = domain
@@ -81,7 +78,7 @@ class ElasticAddress(TaggedEC2Resource, CloudFormationModel):
 
     @classmethod
     def has_cfn_attr(cls, attr: str) -> bool:
-        return attr in ["AllocationId"]
+        return attr in {"AllocationId"}
 
     def get_cfn_attribute(self, attribute_name: str) -> Any:
         from moto.cloudformation.exceptions import UnformattedGetAttTemplateException
@@ -100,22 +97,16 @@ class ElasticAddress(TaggedEC2Resource, CloudFormationModel):
         elif filter_name == "domain":
             return self.domain
         elif filter_name == "instance-id":
-            if self.instance:
-                return self.instance.id
-            return None
+            return self.instance.id if self.instance else None
         elif filter_name == "network-interface-id":
-            if self.eni:
-                return self.eni.id
-            return None
-        elif filter_name == "private-ip-address":
-            if self.eni:
-                return self.eni.private_ip_address
-            return None
-        elif filter_name == "public-ip":
-            return self.public_ip
+            return self.eni.id if self.eni else None
         elif filter_name == "network-interface-owner-id":
             # TODO: implement network-interface-owner-id
             raise FilterNotImplementedError(filter_name, "DescribeAddresses")
+        elif filter_name == "private-ip-address":
+            return self.eni.private_ip_address if self.eni else None
+        elif filter_name == "public-ip":
+            return self.public_ip
         else:
             return super().get_filter_value(filter_name, "DescribeAddresses")
 

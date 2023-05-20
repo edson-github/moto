@@ -34,9 +34,7 @@ class Host(TaggedEC2Resource):
             return self.state
         if filter_name == "tag-key":
             return [t["key"] for t in self.get_tags()]
-        if filter_name == "instance-type":
-            return self.instance_type
-        return None
+        return self.instance_type if filter_name == "instance-type" else None
 
 
 class HostsBackend:

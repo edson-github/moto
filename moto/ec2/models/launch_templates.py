@@ -140,11 +140,7 @@ class LaunchTemplate(TaggedEC2Resource, CloudFormationModel):
             properties.get("TagSpecifications", {}), tag_key="Tags"
         )
 
-        launch_template = backend.create_launch_template(
-            name, description, data, tag_spec
-        )
-
-        return launch_template
+        return backend.create_launch_template(name, description, data, tag_spec)
 
     @classmethod
     def update_from_cloudformation_json(  # type: ignore[misc]

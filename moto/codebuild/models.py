@@ -19,14 +19,12 @@ class CodeBuildProjectMetadata(BaseModel):
         service_role: str,
     ):
         current_date = iso_8601_datetime_with_milliseconds(datetime.datetime.utcnow())
-        self.build_metadata: Dict[str, Any] = dict()
+        self.build_metadata: Dict[str, Any] = {
+            "id": build_id,
+            "arn": f"arn:aws:codebuild:{region_name}:{account_id}:build/{build_id}",
+            "buildNumber": mock_random.randint(1, 100),
+        }
 
-        self.build_metadata["id"] = build_id
-        self.build_metadata[
-            "arn"
-        ] = f"arn:aws:codebuild:{region_name}:{account_id}:build/{build_id}"
-
-        self.build_metadata["buildNumber"] = mock_random.randint(1, 100)
         self.build_metadata["startTime"] = current_date
         self.build_metadata["currentPhase"] = "QUEUED"
         self.build_metadata["buildStatus"] = "IN_PROGRESS"
@@ -100,29 +98,23 @@ class CodeBuild(BaseModel):
         serviceRole: str = "some_role",
     ):
         current_date = iso_8601_datetime_with_milliseconds(datetime.datetime.utcnow())
-        self.project_metadata: Dict[str, Any] = dict()
+        self.project_metadata: Dict[str, Any] = {
+            "name": project_name,
+            "arn": f"arn:aws:codebuild:{region}:{account_id}:project/{project_name}",
+            "encryptionKey": f"arn:aws:kms:{region}:{account_id}:alias/aws/s3",
+            "serviceRole": f"arn:aws:iam::{account_id}:role/service-role/{serviceRole}",
+            "lastModifiedDate": current_date,
+            "created": current_date,
+            "badge": {},
+        }
 
-        self.project_metadata["name"] = project_name
-        self.project_metadata[
-            "arn"
-        ] = f"arn:aws:codebuild:{region}:{account_id}:project/{project_name}"
-        self.project_metadata[
-            "encryptionKey"
-        ] = f"arn:aws:kms:{region}:{account_id}:alias/aws/s3"
-        self.project_metadata[
-            "serviceRole"
-        ] = f"arn:aws:iam::{account_id}:role/service-role/{serviceRole}"
-        self.project_metadata["lastModifiedDate"] = current_date
-        self.project_metadata["created"] = current_date
-        self.project_metadata["badge"] = dict()
         self.project_metadata["badge"][
             "badgeEnabled"
         ] = False  # this false needs to be a json false not a python false
         self.project_metadata["environment"] = environment
         self.project_metadata["artifacts"] = artifacts
         self.project_metadata["source"] = project_source
-        self.project_metadata["cache"] = dict()
-        self.project_metadata["cache"]["type"] = "NO_CACHE"
+        self.project_metadata["cache"] = {"type": "NO_CACHE"}
         self.project_metadata["timeoutInMinutes"] = ""
         self.project_metadata["queuedTimeoutInMinutes"] = ""
 
@@ -130,9 +122,9 @@ class CodeBuild(BaseModel):
 class CodeBuildBackend(BaseBackend):
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.codebuild_projects: Dict[str, CodeBuild] = dict()
-        self.build_history: Dict[str, List[str]] = dict()
-        self.build_metadata: Dict[str, CodeBuildProjectMetadata] = dict()
+        self.codebuild_projects: Dict[str, CodeBuild] = {}
+        self.build_history: Dict[str, List[str]] = {}
+        self.build_metadata: Dict[str, CodeBuildProjectMetadata] = {}
         self.build_metadata_history: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
     def create_project(
@@ -158,18 +150,13 @@ class CodeBuildBackend(BaseBackend):
         )
 
         # empty build history
-        self.build_history[project_name] = list()
+        self.build_history[project_name] = []
 
         return self.codebuild_projects[project_name].project_metadata
 
     def list_projects(self) -> List[str]:
 
-        projects = []
-
-        for project in self.codebuild_projects.keys():
-            projects.append(project)
-
-        return projects
+        return list(self.codebuild_projects.keys())
 
     def start_build(
         self,
@@ -220,12 +207,13 @@ class CodeBuildBackend(BaseBackend):
         ]
 
         for status in statuses:
-            phase: Dict[str, Any] = dict()
-            phase["phaseType"] = status
-            phase["phaseStatus"] = "SUCCEEDED"
-            phase["startTime"] = current_date
-            phase["endTime"] = current_date
-            phase["durationInSeconds"] = mock_random.randint(10, 100)
+            phase: Dict[str, Any] = {
+                "phaseType": status,
+                "phaseStatus": "SUCCEEDED",
+                "startTime": current_date,
+                "endTime": current_date,
+                "durationInSeconds": mock_random.randint(10, 100),
+            }
             phases.append(phase)
 
         return phases
@@ -252,7 +240,7 @@ class CodeBuildBackend(BaseBackend):
         try:
             return self.build_history[project_name]
         except KeyError:
-            return list()
+            return []
 
     def list_builds(self) -> List[str]:
         ids = []

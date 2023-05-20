@@ -142,27 +142,27 @@ class Integration(BaseModel):
         self.timeout_in_millis = int(timeout_in_millis) if timeout_in_millis else None
         self.tls_config = tls_config
 
-        if self.integration_type in ["MOCK", "HTTP"]:
+        if self.integration_type in {"MOCK", "HTTP"}:
             self.integration_response_selection_expression = (
                 "${integration.response.statuscode}"
             )
-        elif self.integration_type in ["AWS"]:
+        elif self.integration_type in {"AWS"}:
             self.integration_response_selection_expression = (
                 "${integration.response.body.errorMessage}"
             )
         if (
-            self.integration_type in ["AWS", "MOCK", "HTTP"]
+            self.integration_type in {"AWS", "MOCK", "HTTP"}
             and self.passthrough_behavior is None
         ):
             self.passthrough_behavior = "WHEN_NO_MATCH"
         if self.integration_uri is not None and self.integration_method is None:
             self.integration_method = "POST"
-        if self.integration_type in ["AWS", "MOCK"]:
+        if self.integration_type in {"AWS", "MOCK"}:
             self.timeout_in_millis = self.timeout_in_millis or 29000
         else:
             self.timeout_in_millis = self.timeout_in_millis or 30000
 
-        self.responses: Dict[str, IntegrationResponse] = dict()
+        self.responses: Dict[str, IntegrationResponse] = {}
 
     def create_response(
         self,
@@ -420,7 +420,7 @@ class Route(BaseModel):
         self.route_response_selection_expression = route_response_selection_expression
         self.target = target
 
-        self.route_responses: Dict[str, RouteResponse] = dict()
+        self.route_responses: Dict[str, RouteResponse] = {}
 
     def create_route_response(
         self,
@@ -537,10 +537,10 @@ class Api(BaseModel):
         )
         self.version = version
 
-        self.authorizers: Dict[str, Authorizer] = dict()
-        self.integrations: Dict[str, Integration] = dict()
-        self.models: Dict[str, Model] = dict()
-        self.routes: Dict[str, Route] = dict()
+        self.authorizers: Dict[str, Authorizer] = {}
+        self.integrations: Dict[str, Integration] = {}
+        self.models: Dict[str, Model] = {}
+        self.routes: Dict[str, Route] = {}
 
         self.arn = f"arn:aws:apigateway:{region}::/apis/{self.api_id}"
         self.backend.tag_resource(self.arn, tags)
@@ -1069,10 +1069,10 @@ class ApiGatewayV2Backend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.apis: Dict[str, Api] = dict()
-        self.vpc_links: Dict[str, VpcLink] = dict()
-        self.domain_names: Dict[str, DomainName] = dict()
-        self.api_mappings: Dict[str, ApiMapping] = dict()
+        self.apis: Dict[str, Api] = {}
+        self.vpc_links: Dict[str, VpcLink] = {}
+        self.domain_names: Dict[str, DomainName] = {}
+        self.api_mappings: Dict[str, ApiMapping] = {}
         self.tagger = TaggingService()
 
     def create_api(
@@ -1188,7 +1188,7 @@ class ApiGatewayV2Backend(BaseBackend):
                 "AuthorizerPayloadFormatVersion is a required parameter for REQUEST authorizer"
             )
 
-        authorizer = api.create_authorizer(
+        return api.create_authorizer(
             auth_creds_arn=auth_creds_arn,
             auth_payload_format_version=auth_payload_format_version,
             auth_result_ttl=auth_result_ttl,
@@ -1200,7 +1200,6 @@ class ApiGatewayV2Backend(BaseBackend):
             jwt_config=jwt_config,
             name=name,
         )
-        return authorizer
 
     def delete_authorizer(self, api_id: str, authorizer_id: str) -> None:
         api = self.get_api(api_id)
@@ -1208,8 +1207,7 @@ class ApiGatewayV2Backend(BaseBackend):
 
     def get_authorizer(self, api_id: str, authorizer_id: str) -> Authorizer:
         api = self.get_api(api_id)
-        authorizer = api.get_authorizer(authorizer_id=authorizer_id)
-        return authorizer
+        return api.get_authorizer(authorizer_id=authorizer_id)
 
     def update_authorizer(
         self,
@@ -1227,7 +1225,7 @@ class ApiGatewayV2Backend(BaseBackend):
         name: str,
     ) -> Authorizer:
         api = self.get_api(api_id)
-        authorizer = api.update_authorizer(
+        return api.update_authorizer(
             authorizer_id=authorizer_id,
             auth_creds_arn=auth_creds_arn,
             auth_payload_format_version=auth_payload_format_version,
@@ -1240,16 +1238,17 @@ class ApiGatewayV2Backend(BaseBackend):
             jwt_config=jwt_config,
             name=name,
         )
-        return authorizer
 
     def create_model(
         self, api_id: str, content_type: str, description: str, name: str, schema: str
     ) -> Model:
         api = self.get_api(api_id)
-        model = api.create_model(
-            content_type=content_type, description=description, name=name, schema=schema
+        return api.create_model(
+            content_type=content_type,
+            description=description,
+            name=name,
+            schema=schema,
         )
-        return model
 
     def delete_model(self, api_id: str, model_id: str) -> None:
         api = self.get_api(api_id)
@@ -1297,7 +1296,7 @@ class ApiGatewayV2Backend(BaseBackend):
         target: str,
     ) -> Route:
         api = self.get_api(api_id)
-        route = api.create_route(
+        return api.create_route(
             api_key_required=api_key_required,
             authorization_scopes=authorization_scopes,
             authorization_type=authorization_type,
@@ -1310,7 +1309,6 @@ class ApiGatewayV2Backend(BaseBackend):
             route_response_selection_expression=route_response_selection_expression,
             target=target,
         )
-        return route
 
     def delete_route(self, api_id: str, route_id: str) -> None:
         api = self.get_api(api_id)
@@ -1350,7 +1348,7 @@ class ApiGatewayV2Backend(BaseBackend):
         target: str,
     ) -> Route:
         api = self.get_api(api_id)
-        route = api.update_route(
+        return api.update_route(
             route_id=route_id,
             api_key_required=api_key_required,
             authorization_scopes=authorization_scopes,
@@ -1364,7 +1362,6 @@ class ApiGatewayV2Backend(BaseBackend):
             route_response_selection_expression=route_response_selection_expression,
             target=target,
         )
-        return route
 
     def create_route_response(
         self,
@@ -1419,7 +1416,7 @@ class ApiGatewayV2Backend(BaseBackend):
         tls_config: Dict[str, str],
     ) -> Integration:
         api = self.get_api(api_id)
-        integration = api.create_integration(
+        return api.create_integration(
             connection_id=connection_id,
             connection_type=connection_type,
             content_handling_strategy=content_handling_strategy,
@@ -1438,12 +1435,10 @@ class ApiGatewayV2Backend(BaseBackend):
             timeout_in_millis=timeout_in_millis,
             tls_config=tls_config,
         )
-        return integration
 
     def get_integration(self, api_id: str, integration_id: str) -> Integration:
         api = self.get_api(api_id)
-        integration = api.get_integration(integration_id)
-        return integration
+        return api.get_integration(integration_id)
 
     def get_integrations(self, api_id: str) -> List[Integration]:
         """
@@ -1479,7 +1474,7 @@ class ApiGatewayV2Backend(BaseBackend):
         tls_config: Dict[str, str],
     ) -> Integration:
         api = self.get_api(api_id)
-        integration = api.update_integration(
+        return api.update_integration(
             integration_id=integration_id,
             connection_id=connection_id,
             connection_type=connection_type,
@@ -1499,7 +1494,6 @@ class ApiGatewayV2Backend(BaseBackend):
             timeout_in_millis=timeout_in_millis,
             tls_config=tls_config,
         )
-        return integration
 
     def create_integration_response(
         self,
@@ -1512,7 +1506,7 @@ class ApiGatewayV2Backend(BaseBackend):
         template_selection_expression: str,
     ) -> IntegrationResponse:
         api = self.get_api(api_id)
-        integration_response = api.create_integration_response(
+        return api.create_integration_response(
             integration_id=integration_id,
             content_handling_strategy=content_handling_strategy,
             integration_response_key=integration_response_key,
@@ -1520,7 +1514,6 @@ class ApiGatewayV2Backend(BaseBackend):
             response_templates=response_templates,
             template_selection_expression=template_selection_expression,
         )
-        return integration_response
 
     def delete_integration_response(
         self, api_id: str, integration_id: str, integration_response_id: str
@@ -1556,7 +1549,7 @@ class ApiGatewayV2Backend(BaseBackend):
         template_selection_expression: str,
     ) -> IntegrationResponse:
         api = self.get_api(api_id)
-        integration_response = api.update_integration_response(
+        return api.update_integration_response(
             integration_id=integration_id,
             integration_response_id=integration_response_id,
             content_handling_strategy=content_handling_strategy,
@@ -1565,7 +1558,6 @@ class ApiGatewayV2Backend(BaseBackend):
             response_templates=response_templates,
             template_selection_expression=template_selection_expression,
         )
-        return integration_response
 
     def create_vpc_link(
         self, name: str, sg_ids: List[str], subnet_ids: List[str], tags: Dict[str, str]
@@ -1636,11 +1628,9 @@ class ApiGatewayV2Backend(BaseBackend):
     def _generate_api_maping_id(
         self, api_mapping_key: str, stage: str, domain_name: str
     ) -> str:
-        return str(
-            hashlib.sha256(
-                f"{stage} {domain_name}/{api_mapping_key}".encode("utf-8")
-            ).hexdigest()
-        )[:5]
+        return hashlib.sha256(
+            f"{stage} {domain_name}/{api_mapping_key}".encode("utf-8")
+        ).hexdigest()[:5]
 
     def create_api_mapping(
         self, api_id: str, api_mapping_key: str, domain_name: str, stage: str
@@ -1684,11 +1674,11 @@ class ApiGatewayV2Backend(BaseBackend):
         return self.api_mappings[api_mapping_id]
 
     def get_api_mappings(self, domain_name: str) -> List[ApiMapping]:
-        domain_mappings = []
-        for mapping in self.api_mappings.values():
-            if mapping.domain_name == domain_name:
-                domain_mappings.append(mapping)
-        return domain_mappings
+        return [
+            mapping
+            for mapping in self.api_mappings.values()
+            if mapping.domain_name == domain_name
+        ]
 
     def delete_api_mapping(self, api_mapping_id: str, domain_name: str) -> None:
         if api_mapping_id not in self.api_mappings.keys():

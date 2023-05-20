@@ -86,10 +86,10 @@ class CustomerGatewayBackend:
         return customer_gateways
 
     def get_customer_gateway(self, customer_gateway_id: str) -> CustomerGateway:
-        customer_gateway = self.customer_gateways.get(customer_gateway_id)
-        if not customer_gateway:
+        if customer_gateway := self.customer_gateways.get(customer_gateway_id):
+            return customer_gateway
+        else:
             raise InvalidCustomerGatewayIdError(customer_gateway_id)
-        return customer_gateway
 
     def delete_customer_gateway(self, customer_gateway_id: str) -> None:
         customer_gateway = self.get_customer_gateway(customer_gateway_id)

@@ -124,14 +124,12 @@ class CodePipelineBackend(BaseBackend):
         return pipeline, sorted(tags, key=lambda i: i["key"])
 
     def get_pipeline(self, name: str) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        codepipeline = self.pipelines.get(name)
-
-        if not codepipeline:
+        if codepipeline := self.pipelines.get(name):
+            return codepipeline.pipeline, codepipeline.metadata
+        else:
             raise PipelineNotFoundException(
                 f"Account '{self.account_id}' does not have a pipeline with name '{name}'"
             )
-
-        return codepipeline.pipeline, codepipeline.metadata
 
     def update_pipeline(self, pipeline: Dict[str, Any]) -> Dict[str, Any]:
         codepipeline = self.pipelines.get(pipeline["name"])
@@ -149,18 +147,15 @@ class CodePipelineBackend(BaseBackend):
         return codepipeline.pipeline
 
     def list_pipelines(self) -> List[Dict[str, str]]:
-        pipelines = []
-
-        for name, codepipeline in self.pipelines.items():
-            pipelines.append(
-                {
-                    "name": name,
-                    "version": codepipeline.pipeline["version"],
-                    "created": codepipeline.metadata["created"],
-                    "updated": codepipeline.metadata["updated"],
-                }
-            )
-
+        pipelines = [
+            {
+                "name": name,
+                "version": codepipeline.pipeline["version"],
+                "created": codepipeline.metadata["created"],
+                "updated": codepipeline.metadata["updated"],
+            }
+            for name, codepipeline in self.pipelines.items()
+        ]
         return sorted(pipelines, key=lambda i: i["name"])
 
     def delete_pipeline(self, name: str) -> None:

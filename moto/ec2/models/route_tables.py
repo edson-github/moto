@@ -69,8 +69,7 @@ class RouteTable(TaggedEC2Resource, CloudFormationModel):
 
         vpc_id = properties["VpcId"]
         ec2_backend = ec2_backends[account_id][region_name]
-        route_table = ec2_backend.create_route_table(vpc_id=vpc_id)
-        return route_table
+        return ec2_backend.create_route_table(vpc_id=vpc_id)
 
     @property
     def physical_resource_id(self) -> str:
@@ -82,20 +81,13 @@ class RouteTable(TaggedEC2Resource, CloudFormationModel):
         if filter_name == "association.main":
             # Note: Boto only supports 'true'.
             # https://github.com/boto/boto/issues/1742
-            if self.main_association_id is not None:
-                return "true"
-            else:
-                return "false"
-        elif filter_name == "route-table-id":
-            return self.id
-        elif filter_name == "vpc-id":
-            return self.vpc_id
-        elif filter_name == "association.route-table-id":
-            return self.id
+            return "true" if self.main_association_id is not None else "false"
         elif filter_name == "association.route-table-association-id":
             return self.all_associations_ids
         elif filter_name == "association.subnet-id":
             return self.associations.values()
+        elif filter_name in {"route-table-id", "association.route-table-id"}:
+            return self.id
         elif filter_name == "route.destination-cidr-block":
             return [
                 route.destination_cidr_block
@@ -114,6 +106,8 @@ class RouteTable(TaggedEC2Resource, CloudFormationModel):
                 for route in self.routes.values()
                 if route.vpc_pcx is not None
             ]
+        elif filter_name == "vpc-id":
+            return self.vpc_id
         else:
             return super().get_filter_value(filter_name, "DescribeRouteTables")
 
@@ -201,7 +195,7 @@ class Route(CloudFormationModel):
 
         route_table_id = properties["RouteTableId"]
         ec2_backend = ec2_backends[account_id][region_name]
-        route = ec2_backend.create_route(
+        return ec2_backend.create_route(
             route_table_id=route_table_id,
             destination_cidr_block=properties.get("DestinationCidrBlock"),
             gateway_id=gateway_id,
@@ -212,7 +206,6 @@ class Route(CloudFormationModel):
             interface_id=interface_id,
             vpc_peering_connection_id=pcx_id,
         )
-        return route
 
 
 class RouteBackend:
@@ -250,10 +243,10 @@ class RouteBackend:
         return route_table
 
     def get_route_table(self, route_table_id: str) -> RouteTable:
-        route_table = self.route_tables.get(route_table_id, None)
-        if not route_table:
+        if route_table := self.route_tables.get(route_table_id, None):
+            return route_table
+        else:
             raise InvalidRouteTableIdError(route_table_id)
-        return route_table
 
     def describe_route_tables(
         self, route_table_ids: Optional[List[str]] = None, filters: Any = None
@@ -269,7 +262,7 @@ class RouteBackend:
             if len(route_tables) != len(route_table_ids):
                 invalid_id = list(
                     set(route_table_ids).difference(
-                        set([route_table.id for route_table in route_tables])
+                        {route_table.id for route_table in route_tables}
                     )
                 )[0]
                 raise InvalidRouteTableIdError(invalid_id)
@@ -290,11 +283,9 @@ class RouteBackend:
         gateway_id: Optional[str] = None,
         subnet_id: Optional[str] = None,
     ) -> str:
-        # Idempotent if association already exists.
-        route_tables_by_subnet = self.describe_route_tables(
+        if route_tables_by_subnet := self.describe_route_tables(
             filters={"association.subnet-id": [subnet_id]}
-        )
-        if route_tables_by_subnet:
+        ):
             for association_id, check_subnet_id in route_tables_by_subnet[
                 0
             ].associations.items():
@@ -307,11 +298,11 @@ class RouteBackend:
             self.get_subnet(subnet_id)  # type: ignore[attr-defined]  # Validate subnet exists
             association_id = random_subnet_association_id()
             route_table.associations[association_id] = subnet_id  # type: ignore[assignment]
-            return association_id
         else:
             association_id = random_subnet_association_id()
             route_table.associations[association_id] = gateway_id
-            return association_id
+
+        return association_id
 
     def disassociate_route_table(self, association_id: str) -> Optional[str]:
         for route_table in self.route_tables.values():
@@ -374,7 +365,7 @@ class RouteBackend:
 
         if vpc_endpoint_id:
             vpce = self.describe_vpc_endpoints(vpc_end_point_ids=[vpc_endpoint_id])  # type: ignore[attr-defined]
-            if not vpce[0].endpoint_type == "GatewayLoadBalancer":
+            if vpce[0].endpoint_type != "GatewayLoadBalancer":
                 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/create_route.html
                 # VpcEndpointId (string) – The ID of a VPC endpoint. Supported for Gateway Load Balancer endpoints only.
                 raise RouteNotSupportedError(vpc_endpoint_id)
@@ -499,10 +490,10 @@ class RouteBackend:
         if destination_prefix_list_id:
             cidr = destination_prefix_list_id
         route_id = generate_route_id(route_table_id, cidr)
-        deleted = route_table.routes.pop(route_id, None)
-        if not deleted:
+        if deleted := route_table.routes.pop(route_id, None):
+            return deleted
+        else:
             raise InvalidRouteError(route_table_id, cidr)
-        return deleted
 
     def __validate_destination_cidr_block(
         self, destination_cidr_block: str, route_table: RouteTable
@@ -512,9 +503,7 @@ class RouteBackend:
         Will validate the format and check for overlap with existing routes
         """
         try:
-            ip_v4_network = ipaddress.IPv4Network(
-                str(destination_cidr_block), strict=False
-            )
+            ip_v4_network = ipaddress.IPv4Network(destination_cidr_block, strict=False)
         except ValueError:
             raise InvalidDestinationCIDRBlockParameterError(destination_cidr_block)
 

@@ -77,18 +77,19 @@ class Item(BaseModel):
         return f"Item: {self.to_json()}"
 
     def to_json(self) -> Dict[str, Any]:
-        attributes = {}
-        for attribute_key, attribute in self.attrs.items():
-            attributes[attribute_key] = attribute.value
-
+        attributes = {
+            attribute_key: attribute.value
+            for attribute_key, attribute in self.attrs.items()
+        }
         return {"Attributes": attributes}
 
     def describe_attrs(self, attributes: List[str]) -> Dict[str, Any]:
         if attributes:
-            included = {}
-            for key, value in self.attrs.items():
-                if key in attributes:
-                    included[key] = value
+            included = {
+                key: value
+                for key, value in self.attrs.items()
+                if key in attributes
+            }
         else:
             included = self.attrs
         return {"Item": included}
@@ -153,7 +154,8 @@ class Table(BaseModel):
 
     def __len__(self) -> int:
         return sum(
-            [(len(value) if self.has_range_key else 1) for value in self.items.values()]  # type: ignore
+            len(value) if self.has_range_key else 1
+            for value in self.items.values()
         )
 
     def __nonzero__(self) -> bool:
@@ -187,10 +189,7 @@ class Table(BaseModel):
                 "Table has a range key, but no range key was passed into get_item"
             )
         try:
-            if range_key:
-                return self.items[hash_key][range_key]  # type: ignore
-            else:
-                return self.items[hash_key]  # type: ignore
+            return self.items[hash_key][range_key] if range_key else self.items[hash_key]
         except KeyError:
             return None
 
@@ -206,9 +205,11 @@ class Table(BaseModel):
             possible_results = list(self.all_items())
 
         if range_comparison:
-            for result in possible_results:
-                if result.range_key.compare(range_comparison, range_objs):  # type: ignore[union-attr]
-                    results.append(result)
+            results.extend(
+                result
+                for result in possible_results
+                if result.range_key.compare(range_comparison, range_objs)
+            )
         else:
             # If we're not filtering on range key, return all values
             results = possible_results  # type: ignore[assignment]
@@ -217,8 +218,7 @@ class Table(BaseModel):
     def all_items(self) -> Iterable[Item]:
         for hash_set in self.items.values():
             if self.range_key_attr:
-                for item in hash_set.values():  # type: ignore
-                    yield item
+                yield from hash_set.values()
             else:
                 yield hash_set  # type: ignore[misc]
 
@@ -234,9 +234,7 @@ class Table(BaseModel):
                 attribute_name,
                 (comparison_operator, comparison_objs),
             ) in filters.items():
-                attribute = result.attrs.get(attribute_name)
-
-                if attribute:
+                if attribute := result.attrs.get(attribute_name):
                     # Attribute found
                     if not attribute.compare(comparison_operator, comparison_objs):
                         passes_all_conditions = False
@@ -309,10 +307,7 @@ class DynamoDBBackend(BaseBackend):
 
     def put_item(self, table_name: str, item_attrs: Dict[str, Any]) -> Optional[Item]:
         table = self.tables.get(table_name)
-        if not table:
-            return None
-
-        return table.put_item(item_attrs)
+        return None if not table else table.put_item(item_attrs)
 
     def get_item(
         self,

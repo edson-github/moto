@@ -48,8 +48,7 @@ def get_sf_execution_history_type() -> str:
 
 
 def get_s3_custom_endpoints() -> List[str]:
-    endpoints = os.environ.get("MOTO_S3_CUSTOM_ENDPOINTS")
-    if endpoints:
+    if endpoints := os.environ.get("MOTO_S3_CUSTOM_ENDPOINTS"):
         return endpoints.split(",")
     return []
 
@@ -87,10 +86,7 @@ def moto_server_port() -> str:
 
 @lru_cache()
 def moto_server_host() -> str:
-    if is_docker():
-        return get_docker_host()
-    else:
-        return "http://host.docker.internal"
+    return get_docker_host() if is_docker() else "http://host.docker.internal"
 
 
 def moto_lambda_image() -> str:

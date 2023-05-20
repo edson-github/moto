@@ -123,7 +123,7 @@ class DaxCluster(BaseModel, ManagedState):
         if node_ids_to_remove:
             self.nodes = [n for n in self.nodes if n.node_id not in node_ids_to_remove]
         else:
-            self.nodes = self.nodes[0:new_replication_factor]
+            self.nodes = self.nodes[:new_replication_factor]
         self.replication_factor = new_replication_factor
 
     def delete(self) -> None:
@@ -163,7 +163,7 @@ class DaxCluster(BaseModel, ManagedState):
 class DAXBackend(BaseBackend):
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self._clusters: Dict[str, DaxCluster] = dict()
+        self._clusters: Dict[str, DaxCluster] = {}
         self._tagger = TaggingService()
 
         state_manager.register_default_transition(

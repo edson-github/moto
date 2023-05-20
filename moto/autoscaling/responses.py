@@ -16,10 +16,7 @@ class AutoScalingResponse(BaseResponse):
 
     def create_launch_configuration(self) -> str:
         instance_monitoring_string = self._get_param("InstanceMonitoring.Enabled")
-        if instance_monitoring_string == "true":
-            instance_monitoring = True
-        else:
-            instance_monitoring = False
+        instance_monitoring = instance_monitoring_string == "true"
         params = self._get_params()
         self.autoscaling_backend.create_launch_configuration(
             name=params.get("LaunchConfigurationName"),  # type: ignore[arg-type]
@@ -51,10 +48,7 @@ class AutoScalingResponse(BaseResponse):
         )
         marker = self._get_param("NextToken")
         all_names = [lc.name for lc in all_launch_configurations]
-        if marker:
-            start = all_names.index(marker) + 1
-        else:
-            start = 0
+        start = all_names.index(marker) + 1 if marker else 0
         # the default is 100, but using 50 to make testing easier
         max_records = self._get_int_param("MaxRecords") or 50
         launch_configurations_resp = all_launch_configurations[
@@ -166,10 +160,7 @@ class AutoScalingResponse(BaseResponse):
         group_name = self._get_param("AutoScalingGroupName")
         instance_ids = self._get_multi_param("InstanceIds.member")
         should_decrement_string = self._get_param("ShouldDecrementDesiredCapacity")
-        if should_decrement_string == "true":
-            should_decrement = True
-        else:
-            should_decrement = False
+        should_decrement = should_decrement_string == "true"
         detached_instances = self.autoscaling_backend.detach_instances(
             group_name, instance_ids, should_decrement
         )
@@ -215,10 +206,7 @@ class AutoScalingResponse(BaseResponse):
         token = self._get_param("NextToken")
         all_groups = self.autoscaling_backend.describe_auto_scaling_groups(names)
         all_names = [group.name for group in all_groups]
-        if token:
-            start = all_names.index(token) + 1
-        else:
-            start = 0
+        start = all_names.index(token) + 1 if token else 0
         max_records = self._get_int_param("MaxRecords", 50)
         if max_records > 100:
             raise ValueError
@@ -382,10 +370,7 @@ class AutoScalingResponse(BaseResponse):
         group_name = self._get_param("AutoScalingGroupName")
         instance_ids = self._get_multi_param("InstanceIds.member")
         should_decrement_string = self._get_param("ShouldDecrementDesiredCapacity")
-        if should_decrement_string == "true":
-            should_decrement = True
-        else:
-            should_decrement = False
+        should_decrement = should_decrement_string == "true"
         (
             standby_instances,
             original_size,
@@ -453,10 +438,7 @@ class AutoScalingResponse(BaseResponse):
     def terminate_instance_in_auto_scaling_group(self) -> str:
         instance_id = self._get_param("InstanceId")
         should_decrement_string = self._get_param("ShouldDecrementDesiredCapacity")
-        if should_decrement_string == "true":
-            should_decrement = True
-        else:
-            should_decrement = False
+        should_decrement = should_decrement_string == "true"
         (
             instance,
             original_size,

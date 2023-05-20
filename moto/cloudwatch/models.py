@@ -255,12 +255,10 @@ class MetricDatumBase(BaseModel):
             ):  # should be considered as already present only when name, namespace and dimensions all three are same
                 return False
 
-        if dimensions and any(
-            Dimension(d["Name"], d.get("Value")) not in self.dimensions
+        return not dimensions or all(
+            Dimension(d["Name"], d.get("Value")) in self.dimensions
             for d in dimensions
-        ):
-            return False
-        return True
+        )
 
 
 class MetricDatum(MetricDatumBase):
@@ -355,9 +353,7 @@ class Statistics:
             return self.minimum
         if stat == "Maximum":
             return self.maximum
-        if stat == "SampleCount":
-            return self.sample_count
-        return None
+        return self.sample_count if stat == "SampleCount" else None
 
     @property
     def metric_single_values_list(self) -> List[float]:
@@ -377,17 +373,11 @@ class Statistics:
 
     @property
     def sample_count(self) -> Optional[SupportsFloat]:
-        if "SampleCount" not in self.stats:
-            return None
-
-        return self.calc_sample_count()
+        return None if "SampleCount" not in self.stats else self.calc_sample_count()
 
     @property
     def sum(self) -> Optional[SupportsFloat]:
-        if "Sum" not in self.stats:
-            return None
-
-        return self.calc_sum()
+        return None if "Sum" not in self.stats else self.calc_sum()
 
     @property
     def minimum(self) -> Optional[SupportsFloat]:
@@ -421,19 +411,16 @@ class Statistics:
 
         sample_count = self.calc_sample_count()
 
-        if not sample_count:
-            return None
-
-        return self.calc_sum() / sample_count
+        return None if not sample_count else self.calc_sum() / sample_count
 
     def calc_sample_count(self) -> float:
         return len(self.metric_single_values_list) + sum(
-            [s.sample_count for s in self.metric_aggregated_list]
+            s.sample_count for s in self.metric_aggregated_list
         )
 
     def calc_sum(self) -> float:
         return sum(self.metric_single_values_list) + sum(
-            [s.sum for s in self.metric_aggregated_list]
+            s.sum for s in self.metric_aggregated_list
         )
 
     def timestamp_iso_8601_now(self) -> str:
@@ -545,10 +532,7 @@ class CloudWatchBackend(BaseBackend):
     @staticmethod
     def _list_element_starts_with(items: List[str], needle: str) -> bool:
         """True of any of the list elements starts with needle"""
-        for item in items:
-            if item.startswith(needle):
-                return True
-        return False
+        return any(item.startswith(needle) for item in items)
 
     def get_alarms_by_action_prefix(self, action_prefix: str) -> Iterable[FakeAlarm]:
         return [
@@ -693,14 +677,14 @@ class CloudWatchBackend(BaseBackend):
                         md for md in query_period_data if md.unit == unit
                     ]
 
-                if len(query_period_data) > 0:
+                if query_period_data:
                     stats = Statistics([stat], period_start_time)
                     stats.metric_data = query_period_data
                     result_vals.append(stats.get_statistics_for_type(stat))  # type: ignore[arg-type]
 
                     timestamps.append(stats.timestamp)
                 period_start_time += delta
-            if scan_by == "TimestampDescending" and len(timestamps) > 0:
+            if scan_by == "TimestampDescending" and timestamps:
                 timestamps.reverse()
                 result_vals.reverse()
 
@@ -753,7 +737,7 @@ class CloudWatchBackend(BaseBackend):
             return []
 
         idx = 0
-        data: List[Statistics] = list()
+        data: List[Statistics] = []
         for dt in daterange(
             filtered_data[0].timestamp,
             filtered_data[-1].timestamp + period_delta,
@@ -815,14 +799,14 @@ class CloudWatchBackend(BaseBackend):
         if alarm_name not in self.alarms:
             raise ResourceNotFound
 
-        if state_value not in ("OK", "ALARM", "INSUFFICIENT_DATA"):
+        if state_value in {"OK", "ALARM", "INSUFFICIENT_DATA"}:
+            self.alarms[alarm_name].update_state(reason, reason_data, state_value)
+        else:
             raise ValidationError(
                 "1 validation error detected: "
                 f"Value '{state_value}' at 'stateValue' failed to satisfy constraint: "
                 "Member must satisfy enum value set: [INSUFFICIENT_DATA, ALARM, OK]"
             )
-
-        self.alarms[alarm_name].update_state(reason, reason_data, state_value)
 
     def list_metrics(
         self,
@@ -834,13 +818,12 @@ class CloudWatchBackend(BaseBackend):
         if next_token:
             if next_token not in self.paged_metric_data:
                 raise InvalidParameterValue("Request parameter NextToken is invalid")
-            else:
-                metrics = self.paged_metric_data[next_token]
-                del self.paged_metric_data[next_token]  # Cant reuse same token twice
-                return self._get_paginated(metrics)
+            metrics = self.paged_metric_data[next_token]
+            del self.paged_metric_data[next_token]  # Cant reuse same token twice
         else:
             metrics = self.get_filtered_metrics(metric_name, namespace, dimensions)
-            return self._get_paginated(metrics)
+
+        return self._get_paginated(metrics)
 
     def get_filtered_metrics(
         self, metric_name: str, namespace: str, dimensions: List[Dict[str, str]]
@@ -878,12 +861,11 @@ class CloudWatchBackend(BaseBackend):
     def _get_paginated(
         self, metrics: List[MetricDatumBase]
     ) -> Tuple[Optional[str], List[MetricDatumBase]]:
-        if len(metrics) > 500:
-            next_token = str(mock_random.uuid4())
-            self.paged_metric_data[next_token] = metrics[500:]
-            return next_token, metrics[0:500]
-        else:
+        if len(metrics) <= 500:
             return None, metrics
+        next_token = str(mock_random.uuid4())
+        self.paged_metric_data[next_token] = metrics[500:]
+        return next_token, metrics[:500]
 
     def _extract_dimensions_from_get_metric_data_query(
         self, query: Dict[str, str]
@@ -898,7 +880,7 @@ class CloudWatchBackend(BaseBackend):
             name = query.get(f"{prefix}{counter}{suffix_name}")
             value = query.get(f"{prefix}{counter}{suffix_value}")
             dimensions.append(Dimension(name=name, value=value))
-            counter = counter + 1
+            counter += 1
 
         return dimensions
 

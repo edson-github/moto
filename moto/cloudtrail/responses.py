@@ -156,7 +156,7 @@ class CloudTrailResponse(BaseResponse):
         resource_id = params.get("ResourceId")
         tags_list = params.get("TagsList")
         self.cloudtrail_backend.add_tags(resource_id=resource_id, tags_list=tags_list)
-        return json.dumps(dict())
+        return json.dumps({})
 
     def remove_tags(self) -> str:
         resource_id = self._get_param("ResourceId")
@@ -164,7 +164,7 @@ class CloudTrailResponse(BaseResponse):
         self.cloudtrail_backend.remove_tags(
             resource_id=resource_id, tags_list=tags_list
         )
-        return json.dumps(dict())
+        return json.dumps({})
 
     def list_tags(self) -> str:
         params = json.loads(self.body)

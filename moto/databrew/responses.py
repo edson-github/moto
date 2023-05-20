@@ -185,8 +185,7 @@ class DataBrewResponse(BaseResponse):
         ruleset_name = parsed_url.path.split("/")[-1]
 
         if request.method == "PUT":
-            response = self.put_ruleset_response(ruleset_name)
-            return response
+            return self.put_ruleset_response(ruleset_name)
         elif request.method == "GET":
             return self.get_ruleset_response(ruleset_name)
         elif request.method == "DELETE":

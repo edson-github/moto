@@ -141,13 +141,7 @@ class EC2Backend(
         #
         #   docs.aws.amazon.com/AmazonVPC/latest/UserGuide/default-vpc.html
         #
-        if not self.vpcs:
-            vpc = self.create_default_vpc()
-        else:
-            # For now this is included for potential
-            # backward-compatibility issues
-            vpc = list(self.vpcs.values())[0]
-
+        vpc = list(self.vpcs.values())[0] if self.vpcs else self.create_default_vpc()
         self.default_vpc = vpc
 
         # Create default subnet for each availability zone

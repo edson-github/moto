@@ -64,17 +64,16 @@ class EgressOnlyInternetGatewayBackend:
         return egress_only_igws
 
     def delete_egress_only_internet_gateway(self, gateway_id: str) -> None:
-        egress_only_igw = self.egress_only_internet_gateways.get(gateway_id)
-        if not egress_only_igw:
-            raise InvalidGatewayIDError(gateway_id)
-        if egress_only_igw:
+        if egress_only_igw := self.egress_only_internet_gateways.get(gateway_id):
             self.egress_only_internet_gateways.pop(gateway_id)
+        else:
+            raise InvalidGatewayIDError(gateway_id)
 
     def get_egress_only_igw(self, gateway_id: str) -> EgressOnlyInternetGateway:
-        igw = self.egress_only_internet_gateways.get(gateway_id)
-        if not igw:
+        if igw := self.egress_only_internet_gateways.get(gateway_id):
+            return igw
+        else:
             raise InvalidGatewayIDError(gateway_id)
-        return igw
 
 
 class InternetGateway(TaggedEC2Resource, CloudFormationModel):
@@ -116,10 +115,7 @@ class InternetGateway(TaggedEC2Resource, CloudFormationModel):
 
     @property
     def attachment_state(self) -> str:
-        if self.vpc:
-            return "available"
-        else:
-            return "detached"
+        return "available" if self.vpc else "detached"
 
 
 class InternetGatewayBackend:

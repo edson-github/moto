@@ -48,7 +48,7 @@ class NodeExecutor:
         Returns:
 
         """
-        if len(path_nodes) == 0:
+        if not path_nodes:
             return item.attrs
         else:
             return ExpressionPathResolver(  # type: ignore
@@ -235,7 +235,7 @@ class AddExecutor(NodeExecutor):
                         expression_attribute_names=self.expression_attribute_names,
                     )
                 assert isinstance(current_string_set, DynamoType)
-                if not current_string_set.type == value_to_add.type:
+                if current_string_set.type != value_to_add.type:
                     raise IncorrectDataType()
                 # Sets are implemented as list
                 for value in value_to_add.value:
@@ -250,7 +250,7 @@ class AddExecutor(NodeExecutor):
                     existing_value = DynamoType({DDBType.NUMBER: "0"})
 
                 assert isinstance(existing_value, DynamoType)
-                if not existing_value.type == DDBType.NUMBER:
+                if existing_value.type != DDBType.NUMBER:
                     raise IncorrectDataType()
                 new_value = existing_value + value_to_add
                 SetExecutor.set(
@@ -304,7 +304,11 @@ class UpdateExpressionExecutor:
             node_executor(node, self.expression_attribute_names).execute(self.item)
 
     def get_specific_execution(self, node: Node) -> Optional[Type[NodeExecutor]]:
-        for node_class in self.execution_map:
-            if isinstance(node, node_class):
-                return self.execution_map[node_class]
-        return None
+        return next(
+            (
+                self.execution_map[node_class]
+                for node_class in self.execution_map
+                if isinstance(node, node_class)
+            ),
+            None,
+        )

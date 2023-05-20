@@ -172,13 +172,10 @@ def convert_to_class_args(dict_arg: Dict[str, Any]) -> Dict[str, Any]:
     snake case to use as arguments when instatiating the representative
     class's __init__().
     """
-    class_args = {}
-    for key, value in dict_arg.items():
-        class_args[CAMEL_TO_SNAKE_REGEX.sub("_", key).lower()] = value
-
-    # boto detects if extra/unknown arguments are provided, so it's not
-    # necessary to do so here.
-    return class_args
+    return {
+        CAMEL_TO_SNAKE_REGEX.sub("_", key).lower(): value
+        for key, value in dict_arg.items()
+    }
 
 
 class ConfigEmptyDictable(BaseModel):
@@ -198,23 +195,15 @@ class ConfigEmptyDictable(BaseModel):
         self.capitalize_arn = capitalize_arn
 
     def to_dict(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {}
-        for item, value in self.__dict__.items():
-            # ignore private attributes
-            if not item.startswith("_") and value is not None:
-                if isinstance(value, ConfigEmptyDictable):
-                    data[
-                        snake_to_camels(
-                            item, self.capitalize_start, self.capitalize_arn
-                        )
-                    ] = value.to_dict()
-                else:
-                    data[
-                        snake_to_camels(
-                            item, self.capitalize_start, self.capitalize_arn
-                        )
-                    ] = value
-
+        data: Dict[str, Any] = {
+            snake_to_camels(
+                item, self.capitalize_start, self.capitalize_arn
+            ): value.to_dict()
+            if isinstance(value, ConfigEmptyDictable)
+            else value
+            for item, value in self.__dict__.items()
+            if not item.startswith("_") and value is not None
+        }
         # Cleanse the extra properties:
         for prop in POP_STRINGS:
             data.pop(prop, None)
@@ -277,9 +266,7 @@ class ConfigDeliveryChannel(ConfigEmptyDictable):
         """Need to override this function because the KMS Key ARN is written as `Arn` vs. SNS which is `ARN`."""
         data = super().to_dict()
 
-        # Fix the KMS ARN if it's here:
-        kms_arn = data.pop("s3KmsKeyARN", None)
-        if kms_arn:
+        if kms_arn := data.pop("s3KmsKeyARN", None):
             data["s3KmsKeyArn"] = kms_arn
 
         return data
@@ -313,10 +300,7 @@ class ConfigRecorder(ConfigEmptyDictable):
         self.role_arn = role_arn
         self.recording_group = recording_group
 
-        if not status:
-            self.status = ConfigRecorderStatus(name)
-        else:
-            self.status = status
+        self.status = ConfigRecorderStatus(name) if not status else status
 
 
 class AccountAggregatorSource(ConfigEmptyDictable):
@@ -506,17 +490,17 @@ class Scope(ConfigEmptyDictable):
     ):
         super().__init__(capitalize_start=True, capitalize_arn=False)
         self.tags = None
-        if tag_key or tag_value:
-            if tag_value and not tag_key:
-                raise InvalidParameterValueException(
-                    "Tag key should not be empty when tag value is provided in scope"
-                )
-            if tag_key and len(tag_key) > 128:
+        if tag_key:
+            if len(tag_key) > 128:
                 raise TagKeyTooBig(tag_key, "ConfigRule.Scope.TagKey")
             if tag_value and len(tag_value) > 256:
                 raise TagValueTooBig(tag_value, "ConfigRule.Scope.TagValue")
             self.tags = {tag_key: tag_value}
 
+        elif tag_value:
+            raise InvalidParameterValueException(
+                "Tag key should not be empty when tag value is provided in scope"
+            )
         # Can't use more than one combo to specify scope - either tags,
         # resource types, or resource id and resource type.
         if self.tags and (compliance_resource_types or compliance_resource_id):
@@ -615,15 +599,11 @@ class SourceDetail(ConfigEmptyDictable):
                     "MessageType is ConfigurationItemChangeNotification or "
                     "OversizedConfigurationItemChangeNotification"
                 )
-        else:
-            # If no value is specified, use a default value for
-            # maximum_execution_frequency for message types representing a
-            # periodic trigger.
-            if message_type in [
+        elif message_type in [
                 "ScheduledNotification",
                 "ConfigurationSnapshotDeliveryCompleted",
             ]:
-                maximum_execution_frequency = SourceDetail.DEFAULT_FREQUENCY
+            maximum_execution_frequency = SourceDetail.DEFAULT_FREQUENCY
 
         self.event_source = event_source
         self.message_type = message_type
@@ -803,30 +783,6 @@ class ConfigRule(ConfigEmptyDictable):
         # Verify the MaximumExecutionFrequency makes sense as well.
         if self.source.owner == "AWS":
             self.validate_managed_rule()
-        else:
-            # Per the AWS documentation for a custom rule, ConfigRule's
-            # MaximumExecutionFrequency can only be set if the message type
-            # is ConfigSnapshotDeliveryProperties. However, if
-            # ConfigSnapshotDeliveryProperties is used, the AWS console
-            # leaves the Trigger Type blank and doesn't show the frequency.
-            # If you edit the rule, it doesn't show the frequency either.
-            #
-            # If you provide two custom rules, one with a message type of
-            # ConfigurationSnapshotDeliveryCompleted, one with
-            # ScheduleNotification and specify a MaximumExecutionFrequency
-            # for each, the first one is shown on the AWS console and the
-            # second frequency is shown on the edit page.
-            #
-            # If you provide a custom rule for
-            # OversizedConfigurationItemChangeNotification (not a periodic
-            # trigger) with a MaximumExecutionFrequency for ConfigRule itself,
-            # boto3 doesn't complain and describe_config_rule() shows the
-            # frequency, but the AWS console and the edit page do not.
-            #
-            # So I'm not sure how to validate this situation or when to
-            # set this value to a default value.
-            pass
-
         self.created_by = config_rule.get("CreatedBy")
         if self.created_by:
             raise InvalidParameterValueException(
@@ -855,8 +811,7 @@ class ConfigRule(ConfigEmptyDictable):
         required_names = {
             x["Name"] for x in rule_info["Parameters"] if not x["Optional"]  # type: ignore[index]
         }
-        diffs = required_names.difference(set(param_names))
-        if diffs:
+        if diffs := required_names.difference(set(param_names)):
             raise InvalidParameterValueException(
                 "The required parameter ["
                 + ", ".join(sorted(diffs))
@@ -931,13 +886,11 @@ class ConfigBackend(BaseBackend):
                 path="data/config/2014-11-12/service-2.json"
             )
 
-        # Verify that each entry exists in the supported list:
-        bad_list = []
-        for resource in resource_list:
-            if resource not in self.config_schema.shapes["ResourceType"]["enum"]:  # type: ignore[index]
-                bad_list.append(resource)
-
-        if bad_list:
+        if bad_list := [
+            resource
+            for resource in resource_list
+            if resource not in self.config_schema.shapes["ResourceType"]["enum"]
+        ]:
             raise InvalidResourceTypeException(
                 bad_list, self.config_schema.shapes["ResourceType"]["enum"]  # type: ignore[index]
             )
@@ -1004,16 +957,14 @@ class ConfigBackend(BaseBackend):
                     len(config_aggregator["AccountAggregationSources"])
                 )
 
-            account_sources = []
-            for source in config_aggregator["AccountAggregationSources"]:
-                account_sources.append(
-                    AccountAggregatorSource(
-                        source["AccountIds"],
-                        aws_regions=source.get("AwsRegions"),
-                        all_aws_regions=source.get("AllAwsRegions"),
-                    )
+            account_sources = [
+                AccountAggregatorSource(
+                    source["AccountIds"],
+                    aws_regions=source.get("AwsRegions"),
+                    all_aws_regions=source.get("AllAwsRegions"),
                 )
-
+                for source in config_aggregator["AccountAggregationSources"]
+            ]
         else:
             org_source = OrganizationAggregationSource(
                 config_aggregator["OrganizationAggregationSource"]["RoleArn"],
@@ -1073,12 +1024,11 @@ class ConfigBackend(BaseBackend):
         # Get the start:
         if not token:
             start = 0
-        else:
-            # Tokens for this moto feature are just the next names of the items in the list:
-            if not self.config_aggregators.get(token):
-                raise InvalidNextTokenException()
-
+        elif self.config_aggregators.get(token):
             start = sorted_aggregators.index(token)
+
+        else:
+            raise InvalidNextTokenException()
 
         # Get the list of items to collect:
         agg_list = sorted_aggregators[start : (start + limit)]
@@ -1139,12 +1089,11 @@ class ConfigBackend(BaseBackend):
         # Get the start:
         if not token:
             start = 0
-        else:
-            # Tokens for this moto feature are just the next names of the items in the list:
-            if not self.aggregation_authorizations.get(token):
-                raise InvalidNextTokenException()
-
+        elif self.aggregation_authorizations.get(token):
             start = sorted_authorizations.index(token)
+
+        else:
+            raise InvalidNextTokenException()
 
         # Get the list of items to collect:
         auth_list = sorted_authorizations[start : (start + limit)]
@@ -1240,9 +1189,7 @@ class ConfigBackend(BaseBackend):
                 recorders.append(self.recorders[rname].to_dict())
 
         else:
-            for recorder in self.recorders.values():
-                recorders.append(recorder.to_dict())
-
+            recorders.extend(recorder.to_dict() for recorder in self.recorders.values())
         return recorders
 
     def describe_configuration_recorder_status(
@@ -1259,9 +1206,9 @@ class ConfigBackend(BaseBackend):
                 recorders.append(self.recorders[rname].status.to_dict())
 
         else:
-            for recorder in self.recorders.values():
-                recorders.append(recorder.status.to_dict())
-
+            recorders.extend(
+                recorder.status.to_dict() for recorder in self.recorders.values()
+            )
         return recorders
 
     def put_delivery_channel(self, delivery_channel: Dict[str, Any]) -> None:
@@ -1341,9 +1288,9 @@ class ConfigBackend(BaseBackend):
                 channels.append(self.delivery_channels[cname].to_dict())
 
         else:
-            for channel in self.delivery_channels.values():
-                channels.append(channel.to_dict())
-
+            channels.extend(
+                channel.to_dict() for channel in self.delivery_channels.values()
+            )
         return channels
 
     def start_configuration_recorder(self, recorder_name: str) -> None:
@@ -1783,16 +1730,15 @@ class ConfigBackend(BaseBackend):
         packs = []
 
         for name in names:
-            pack = self.organization_conformance_packs.get(name)
+            if pack := self.organization_conformance_packs.get(name):
+                packs.append(pack.to_dict())
 
-            if not pack:
+            else:
                 raise NoSuchOrganizationConformancePackException(
                     "One or more organization conformance packs with "
                     "specified names are not present. Ensure your names are "
                     "correct and try your request again later."
                 )
-
-            packs.append(pack.to_dict())
 
         return {"OrganizationConformancePacks": packs}
 
@@ -1800,32 +1746,28 @@ class ConfigBackend(BaseBackend):
         self, names: List[str]
     ) -> Dict[str, Any]:
         packs = []
-        statuses = []
-
         if names:
             for name in names:
-                pack = self.organization_conformance_packs.get(name)
-
-                if not pack:
+                if pack := self.organization_conformance_packs.get(name):
+                    packs.append(pack)
+                else:
                     raise NoSuchOrganizationConformancePackException(
                         "One or more organization conformance packs with "
                         "specified names are not present. Ensure your names "
                         "are correct and try your request again later."
                     )
 
-                packs.append(pack)
         else:
             packs = list(self.organization_conformance_packs.values())
 
-        for pack in packs:
-            statuses.append(
-                {
-                    "OrganizationConformancePackName": pack.organization_conformance_pack_name,
-                    "Status": pack._status,
-                    "LastUpdateTime": pack.last_update_time,
-                }
-            )
-
+        statuses = [
+            {
+                "OrganizationConformancePackName": pack.organization_conformance_pack_name,
+                "Status": pack._status,
+                "LastUpdateTime": pack.last_update_time,
+            }
+            for pack in packs
+        ]
         return {"OrganizationConformancePackStatuses": statuses}
 
     def get_organization_conformance_pack_detailed_status(
@@ -1852,15 +1794,13 @@ class ConfigBackend(BaseBackend):
         return {"OrganizationConformancePackDetailedStatuses": statuses}
 
     def delete_organization_conformance_pack(self, name: str) -> None:
-        pack = self.organization_conformance_packs.get(name)
-
-        if not pack:
+        if pack := self.organization_conformance_packs.get(name):
+            self.organization_conformance_packs.pop(name)
+        else:
             raise NoSuchOrganizationConformancePackException(
                 "Could not find an OrganizationConformancePack for given "
                 f"request with resourceName {name}"
             )
-
-        self.organization_conformance_packs.pop(name)
 
     def _match_arn(
         self, resource_arn: str
@@ -1971,10 +1911,7 @@ class ConfigBackend(BaseBackend):
 
         tag_dict = validate_tags(tags or [])
 
-        # With the rule_name, determine whether it's for an existing rule
-        # or whether a new rule should be created.
-        rule = self.config_rules.get(rule_name)
-        if rule:
+        if rule := self.config_rules.get(rule_name):
             # Rule exists.  Make sure it isn't in use for another activity.
             rule_state = rule.config_rule_state
             if rule_state != "ACTIVE":
@@ -2078,8 +2015,8 @@ class ConfigBackend(BaseBackend):
             # If we get a retention name to search for, and we don't have it, then we need to raise an exception:
             if (
                 not self.retention_configuration
-                or not self.retention_configuration.name
-                == retention_configuration_names[0]
+                or self.retention_configuration.name
+                != retention_configuration_names[0]
             ):
                 raise NoSuchRetentionConfigurationException(
                     retention_configuration_names[0]
@@ -2098,7 +2035,7 @@ class ConfigBackend(BaseBackend):
         """This will delete the retention configuration if one is present with the provided name."""
         if (
             not self.retention_configuration
-            or not self.retention_configuration.name == retention_configuration_name
+            or self.retention_configuration.name != retention_configuration_name
         ):
             raise NoSuchRetentionConfigurationException(retention_configuration_name)
 

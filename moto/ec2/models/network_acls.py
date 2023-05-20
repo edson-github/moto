@@ -18,10 +18,10 @@ class NetworkAclBackend:
         self.network_acls: Dict[str, "NetworkAcl"] = {}
 
     def get_network_acl(self, network_acl_id: str) -> "NetworkAcl":
-        network_acl = self.network_acls.get(network_acl_id, None)
-        if not network_acl:
+        if network_acl := self.network_acls.get(network_acl_id, None):
+            return network_acl
+        else:
             raise InvalidNetworkAclIdError(network_acl_id)
-        return network_acl
 
     def create_network_acl(
         self,
@@ -61,10 +61,10 @@ class NetworkAclBackend:
             )
 
     def delete_network_acl(self, network_acl_id: str) -> "NetworkAcl":
-        deleted = self.network_acls.pop(network_acl_id, None)
-        if not deleted:
+        if deleted := self.network_acls.pop(network_acl_id, None):
+            return deleted
+        else:
             raise InvalidNetworkAclIdError(network_acl_id)
-        return deleted
 
     def create_network_acl_entry(
         self,
@@ -131,7 +131,7 @@ class NetworkAclBackend:
     ) -> "NetworkAclEntry":
 
         self.delete_network_acl_entry(network_acl_id, rule_number, egress)
-        network_acl_entry = self.create_network_acl_entry(
+        return self.create_network_acl_entry(
             network_acl_id,
             rule_number,
             protocol,
@@ -143,7 +143,6 @@ class NetworkAclBackend:
             port_range_from,
             port_range_to,
         )
-        return network_acl_entry
 
     def replace_network_acl_association(
         self, association_id: str, network_acl_id: str
@@ -198,7 +197,7 @@ class NetworkAclBackend:
             if len(network_acls) != len(network_acl_ids):
                 invalid_id = list(
                     set(network_acl_ids).difference(
-                        set([network_acl.id for network_acl in network_acls])
+                        {network_acl.id for network_acl in network_acls}
                     )
                 )[0]
                 raise InvalidRouteTableIdError(invalid_id)
@@ -236,7 +235,7 @@ class NetworkAcl(TaggedEC2Resource):
         self.owner_id = owner_id or ec2_backend.account_id
         self.network_acl_entries: List[NetworkAclEntry] = []
         self.associations: Dict[str, NetworkAclAssociation] = {}
-        self.default = "true" if default is True else "false"
+        self.default = "true" if default else "false"
 
     def get_filter_value(
         self, filter_name: str, method_name: Optional[str] = None

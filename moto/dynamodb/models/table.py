@@ -154,9 +154,9 @@ class StreamRecord(BaseModel):
             },
         }
 
-        if stream_type in ("NEW_IMAGE", "NEW_AND_OLD_IMAGES"):
+        if stream_type in {"NEW_IMAGE", "NEW_AND_OLD_IMAGES"}:
             self.record["dynamodb"]["NewImage"] = new_a
-        if stream_type in ("OLD_IMAGE", "NEW_AND_OLD_IMAGES"):
+        if stream_type in {"OLD_IMAGE", "NEW_AND_OLD_IMAGES"}:
             self.record["dynamodb"]["OldImage"] = old_a
 
         # This is a substantial overestimate but it's the easiest to do now
@@ -318,7 +318,7 @@ class Table(CloudFormationModel):
 
     @classmethod
     def has_cfn_attr(cls, attr: str) -> bool:
-        return attr in ["Arn", "StreamArn"]
+        return attr in {"Arn", "StreamArn"}
 
     def get_cfn_attribute(self, attribute_name: str) -> Any:  # type: ignore[misc]
         from moto.cloudformation.exceptions import UnformattedGetAttTemplateException
@@ -382,10 +382,9 @@ class Table(CloudFormationModel):
         if "StreamSpecification" in properties:
             params["streams"] = properties["StreamSpecification"]
 
-        table = dynamodb_backends[account_id][region_name].create_table(
+        return dynamodb_backends[account_id][region_name].create_table(
             name=resource_name, **params
         )
-        return table
 
     @classmethod
     def delete_from_cloudformation_json(  # type: ignore[misc]
@@ -451,36 +450,39 @@ class Table(CloudFormationModel):
 
     def __len__(self) -> int:
         return sum(
-            [(len(value) if self.has_range_key else 1) for value in self.items.values()]
+            len(value) if self.has_range_key else 1
+            for value in self.items.values()
         )
 
     @property
     def hash_key_names(self) -> List[str]:
         keys = [self.hash_key_attr]
         for index in self.global_indexes:
-            for key in index.schema:
-                if key["KeyType"] == "HASH":
-                    keys.append(key["AttributeName"])
+            keys.extend(
+                key["AttributeName"]
+                for key in index.schema
+                if key["KeyType"] == "HASH"
+            )
         return keys
 
     @property
     def range_key_names(self) -> List[str]:
         keys = [self.range_key_attr] if self.has_range_key else []
         for index in self.global_indexes:
-            for key in index.schema:
-                if key["KeyType"] == "RANGE":
-                    keys.append(key["AttributeName"])
+            keys.extend(
+                key["AttributeName"]
+                for key in index.schema
+                if key["KeyType"] == "RANGE"
+            )
         return keys  # type: ignore[return-value]
 
     def _validate_key_sizes(self, item_attrs: Dict[str, Any]) -> None:
         for hash_name in self.hash_key_names:
-            hash_value = item_attrs.get(hash_name)
-            if hash_value:
+            if hash_value := item_attrs.get(hash_name):
                 if DynamoType(hash_value).size() > HASH_KEY_MAX_LENGTH:
                     raise HashKeyTooLong
         for range_name in self.range_key_names:
-            range_value = item_attrs.get(range_name)
-            if range_value:
+            if range_value := item_attrs.get(range_name):
                 if DynamoType(range_value).size() > RANGE_KEY_MAX_LENGTH:
                     raise RangeKeyTooLong
 
@@ -520,15 +522,15 @@ class Table(CloudFormationModel):
                 + " in the item"
             )
         hash_value = DynamoType(item_attrs[self.hash_key_attr])
-        if self.range_key_attr is not None:
-            if self.range_key_attr not in item_attrs.keys():
-                raise MockValidationException(
-                    f"One or more parameter values were invalid: Missing the key {self.range_key_attr} in the item"
-                )
-            range_value = DynamoType(item_attrs[self.range_key_attr])
-        else:
+        if self.range_key_attr is None:
             range_value = None
 
+        elif self.range_key_attr not in item_attrs.keys():
+            raise MockValidationException(
+                f"One or more parameter values were invalid: Missing the key {self.range_key_attr} in the item"
+            )
+        else:
+            range_value = DynamoType(item_attrs[self.range_key_attr])
         if hash_value.type != self.hash_key_type:
             raise InvalidAttributeTypeError(
                 self.hash_key_attr,
@@ -650,7 +652,7 @@ class Table(CloudFormationModel):
 
         if index_name:
             all_indexes = self.all_indexes()
-            indexes_by_name = dict((i.name, i) for i in all_indexes)
+            indexes_by_name = {i.name: i for i in all_indexes}
             if index_name not in indexes_by_name:
                 all_names = ", ".join(indexes_by_name.keys())
                 raise MockValidationException(
@@ -696,8 +698,7 @@ class Table(CloudFormationModel):
         if range_comparison:
             if index_name and not index_range_key:
                 raise ValueError(
-                    "Range Key comparison but no range key found for index: %s"
-                    % index_name
+                    f"Range Key comparison but no range key found for index: {index_name}"
                 )
 
             elif index_name:
@@ -743,7 +744,7 @@ class Table(CloudFormationModel):
         else:
             results.sort(key=lambda item: item.range_key)  # type: ignore
 
-        if scan_index_forward is False:
+        if not scan_index_forward:
             results.reverse()
 
         scanned_count = len(list(self.all_items()))
@@ -770,8 +771,7 @@ class Table(CloudFormationModel):
     def all_items(self) -> Iterator[Item]:
         for hash_set in self.items.values():
             if self.range_key_attr:
-                for item in hash_set.values():
-                    yield item
+                yield from hash_set.values()
             else:
                 yield hash_set  # type: ignore
 
@@ -780,7 +780,7 @@ class Table(CloudFormationModel):
 
     def get_index(self, index_name: str, error_if_not: bool = False) -> SecondaryIndex:
         all_indexes = self.all_indexes()
-        indexes_by_name = dict((i.name, i) for i in all_indexes)
+        indexes_by_name = {i.name: i for i in all_indexes}
         if error_if_not and index_name not in indexes_by_name:
             raise InvalidIndexNameError(
                 f"The table does not have the specified index: {index_name}"
@@ -790,16 +790,15 @@ class Table(CloudFormationModel):
     def has_idx_items(self, index_name: str) -> Iterator[Item]:
 
         idx = self.get_index(index_name)
-        idx_col_set = set([i["AttributeName"] for i in idx.schema])
+        idx_col_set = {i["AttributeName"] for i in idx.schema}
 
         for hash_set in self.items.values():
             if self.range_key_attr:
                 for item in hash_set.values():
                     if idx_col_set.issubset(set(item.attrs)):
                         yield item
-            else:
-                if idx_col_set.issubset(set(hash_set.attrs)):  # type: ignore
-                    yield hash_set  # type: ignore
+            elif idx_col_set.issubset(set(hash_set.attrs)):  # type: ignore
+                yield hash_set  # type: ignore
 
     def scan(
         self,
@@ -826,9 +825,7 @@ class Table(CloudFormationModel):
                 attribute_name,
                 (comparison_operator, comparison_objs),
             ) in filters.items():
-                attribute = item.attrs.get(attribute_name)
-
-                if attribute:
+                if attribute := item.attrs.get(attribute_name):
                     # Attribute found
                     if not attribute.compare(comparison_operator, comparison_objs):
                         passes_all_conditions = False
@@ -939,7 +936,7 @@ class Backup:
 
     def _make_identifier(self) -> str:
         timestamp = int(unix_time_millis(self.creation_date_time))
-        timestamp_padded = str("0" + str(timestamp))[-16:16]
+        timestamp_padded = str(f"0{timestamp}")[-16:16]
         guid = str(mock_random.uuid4())
         guid_shortened = guid[:8]
         return f"{timestamp_padded}-{guid_shortened}"
@@ -980,11 +977,10 @@ class Backup:
         source_table_details["TableCreationDateTime"] = source_table_details[
             "CreationDateTime"
         ]
-        description = {
+        return {
             "BackupDetails": self.details,
             "SourceTableDetails": source_table_details,
         }
-        return description
 
 
 class RestoredTable(Table):

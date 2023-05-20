@@ -46,15 +46,14 @@ def parse_expression(
                     # begins_with(sk, :sk) and primary = :pk
                     #            ^
                     continue
-                else:
-                    # start_date < :sk and primary = :pk
-                    #            ^
-                    key_name = expression_attribute_names.get(
-                        current_phrase, current_phrase
-                    )
-                    current_phrase = ""
-                    current_stage = EXPRESSION_STAGES.COMPARISON
-                    tokenizer.skip_white_space()
+                # start_date < :sk and primary = :pk
+                #            ^
+                key_name = expression_attribute_names.get(
+                    current_phrase, current_phrase
+                )
+                current_phrase = ""
+                current_stage = EXPRESSION_STAGES.COMPARISON
+                tokenizer.skip_white_space()
             elif current_stage == EXPRESSION_STAGES.KEY_VALUE:
                 # job_id =          :id
                 # job_id =          :id and  ...
@@ -79,11 +78,7 @@ def parse_expression(
                     break
                 tokenizer.skip_characters("AND", case_sensitive=False)
                 tokenizer.skip_white_space()
-                if comparison.upper() == "BETWEEN":
-                    # We can expect another key_value, i.e. BETWEEN x and y
-                    # We should add some validation, to not allow BETWEEN x and y and z and ..
-                    pass
-                else:
+                if comparison.upper() != "BETWEEN":
                     current_stage = EXPRESSION_STAGES.INITIAL_STAGE
             elif current_stage == EXPRESSION_STAGES.COMPARISON:
                 # hashkey = :id and sortkey       =      :sk
@@ -114,20 +109,19 @@ def parse_expression(
             current_stage = EXPRESSION_STAGES.KEY_VALUE
             continue
         if crnt_char in [","]:
-            if current_stage == EXPRESSION_STAGES.KEY_NAME:
-                # hashkey = :id and begins_with(sortkey,     :sk)
-                #                                      ^ --> ^
-                key_name = expression_attribute_names.get(
-                    current_phrase, current_phrase
-                )
-                current_phrase = ""
-                current_stage = EXPRESSION_STAGES.KEY_VALUE
-                tokenizer.skip_white_space()
-                continue
-            else:
+            if current_stage != EXPRESSION_STAGES.KEY_NAME:
                 raise MockValidationException(
                     f'Invalid KeyConditionExpression: Syntax error; token: "{current_phrase}"'
                 )
+            # hashkey = :id and begins_with(sortkey,     :sk)
+            #                                      ^ --> ^
+            key_name = expression_attribute_names.get(
+                current_phrase, current_phrase
+            )
+            current_phrase = ""
+            current_stage = EXPRESSION_STAGES.KEY_VALUE
+            tokenizer.skip_white_space()
+            continue
         if crnt_char in [")"]:
             if current_stage == EXPRESSION_STAGES.KEY_VALUE:
                 # hashkey = :id and begins_with(sortkey, :sk)
@@ -140,11 +134,10 @@ def parse_expression(
                 tokenizer.skip_white_space()
                 if tokenizer.is_eof() or tokenizer.peek() == ")":
                     break
-                else:
-                    tokenizer.skip_characters("AND", case_sensitive=False)
-                    tokenizer.skip_white_space()
-                    current_stage = EXPRESSION_STAGES.INITIAL_STAGE
-                    continue
+                tokenizer.skip_characters("AND", case_sensitive=False)
+                tokenizer.skip_white_space()
+                current_stage = EXPRESSION_STAGES.INITIAL_STAGE
+                continue
         if crnt_char in [""]:
             # hashkey =                   :id
             # hashkey = :id and sortkey = :sk

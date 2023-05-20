@@ -33,7 +33,7 @@ class EBSSnapshot(BaseModel):
         ]
         self.description = snapshot.description
 
-        self.blocks: Dict[str, Block] = dict()
+        self.blocks: Dict[str, Block] = {}
 
     def put_block(
         self,
@@ -64,7 +64,7 @@ class EBSBackend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.snapshots: Dict[str, EBSSnapshot] = dict()
+        self.snapshots: Dict[str, EBSSnapshot] = {}
 
     @property
     def ec2_backend(self) -> EC2Backend:
@@ -118,9 +118,7 @@ class EBSBackend(BaseBackend):
         """
         snapshot1 = self.snapshots[first_snapshot_id]
         snapshot2 = self.snapshots[second_snapshot_id]
-        changed_blocks: Dict[
-            str, Tuple[str, Optional[str]]
-        ] = dict()  # {idx: (token1, token2), ..}
+        changed_blocks: Dict[str, Tuple[str, Optional[str]]] = {}
         for idx in snapshot1.blocks:
             block1 = snapshot1.blocks[idx]
             if idx in snapshot2.blocks:

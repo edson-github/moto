@@ -58,7 +58,7 @@ class Workspace(BaseModel):
         self.status = {"statusCode": "ACTIVE"}
         self.created_at = unix_time()
         self.tag_fn = tag_fn
-        self.rule_group_namespaces: Dict[str, RuleGroupNamespace] = dict()
+        self.rule_group_namespaces: Dict[str, RuleGroupNamespace] = {}
         self.logging_config: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -78,7 +78,7 @@ class PrometheusServiceBackend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.workspaces: Dict[str, Workspace] = dict()
+        self.workspaces: Dict[str, Workspace] = {}
         self.tagger = TaggingService()
 
     def create_workspace(self, alias: str, tags: Dict[str, str]) -> Workspace:
@@ -197,9 +197,7 @@ class PrometheusServiceBackend(BaseBackend):
 
     def describe_logging_configuration(self, workspace_id: str) -> Dict[str, Any]:
         ws = self.describe_workspace(workspace_id)
-        if ws.logging_config is None:
-            return {}
-        return ws.logging_config
+        return {} if ws.logging_config is None else ws.logging_config
 
     def delete_logging_configuration(self, workspace_id: str) -> None:
         ws = self.describe_workspace(workspace_id)

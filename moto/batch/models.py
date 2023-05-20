@@ -262,9 +262,7 @@ class JobDefinition(CloudFormationModel):
         )
 
         tag_list = self._format_tags(tags or {})
-        # Validate the tags before proceeding.
-        errmsg = self.backend.tagger.validate_tags(tag_list)
-        if errmsg:
+        if errmsg := self.backend.tagger.validate_tags(tag_list):
             raise ValidationError(errmsg)
 
         self.backend.tagger.tag_resource(self.arn, tag_list)
@@ -292,25 +290,22 @@ class JobDefinition(CloudFormationModel):
         """
         resource_reqs = self.container_properties.get("resourceRequirements", [])
 
-        # Filter the resource requirements by the specified type.
-        # Note that VCPUS are specified in resourceRequirements without the
-        # trailing "s", so we strip that off in the comparison below.
-        required_resource = list(
-            filter(
-                lambda req: req["type"].lower() == req_type.lower().rstrip("s"),
-                resource_reqs,
+        if not (
+            required_resource := list(
+                filter(
+                    lambda req: req["type"].lower()
+                    == req_type.lower().rstrip("s"),
+                    resource_reqs,
+                )
             )
-        )
-
-        if required_resource:
-            if req_type == "vcpus":
-                return float(required_resource[0]["value"])
-            elif req_type == "memory":
-                return int(required_resource[0]["value"])
-            else:
-                return required_resource[0]["value"]
-        else:
+        ):
             return self.container_properties.get(req_type, default)
+        if req_type == "memory":
+            return int(required_resource[0]["value"])
+        elif req_type == "vcpus":
+            return float(required_resource[0]["value"])
+        else:
+            return required_resource[0]["value"]
 
     def _validate(self) -> None:
         # For future use when containers arnt the only thing in batch
@@ -495,7 +490,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         self.exit_code: Optional[int] = None
 
         self.daemon = True
-        self.name = "MOTO-BATCH-" + self.job_id
+        self.name = f"MOTO-BATCH-{self.job_id}"
 
         self._log_backend = log_backend
         self._log_group = "/aws/batch/job"
@@ -543,8 +538,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         return result
 
     def _container_details(self) -> Dict[str, Any]:
-        details = {}
-        details["command"] = self._get_container_property("command", [])
+        details = {"command": self._get_container_property("command", [])}
         details["privileged"] = self._get_container_property("privileged", False)
         details["readonlyRootFilesystem"] = self._get_container_property(
             "readonlyRootFilesystem", False
@@ -559,29 +553,29 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         return details
 
     def _get_container_property(self, p: str, default: Any) -> Any:
-        if p == "environment":
-            job_env = self.container_overrides.get(p, default)
-            jd_env = self.job_definition.container_properties.get(p, default)
-
-            job_env_dict = {_env["name"]: _env["value"] for _env in job_env}
-            jd_env_dict = {_env["name"]: _env["value"] for _env in jd_env}
-
-            for key in jd_env_dict.keys():
-                if key not in job_env_dict.keys():
-                    job_env.append({"name": key, "value": jd_env_dict[key]})
-
-            job_env.append({"name": "AWS_BATCH_JOB_ID", "value": self.job_id})
-
-            return job_env
-
-        if p in ["vcpus", "memory"]:
-            return self.container_overrides.get(
-                p, self.job_definition._get_resource_requirement(p, default)
+        if p != "environment":
+            return (
+                self.container_overrides.get(
+                    p, self.job_definition._get_resource_requirement(p, default)
+                )
+                if p in {"vcpus", "memory"}
+                else self.container_overrides.get(
+                    p, self.job_definition.container_properties.get(p, default)
+                )
             )
+        job_env = self.container_overrides.get(p, default)
+        jd_env = self.job_definition.container_properties.get(p, default)
 
-        return self.container_overrides.get(
-            p, self.job_definition.container_properties.get(p, default)
-        )
+        job_env_dict = {_env["name"]: _env["value"] for _env in job_env}
+        jd_env_dict = {_env["name"]: _env["value"] for _env in jd_env}
+
+        for key, value in jd_env_dict.items():
+            if key not in job_env_dict.keys():
+                job_env.append({"name": key, "value": value})
+
+        job_env.append({"name": "AWS_BATCH_JOB_ID", "value": self.job_id})
+
+        return job_env
 
     def _get_attempt_duration(self) -> Optional[int]:
         if self.timeout:
@@ -667,14 +661,8 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
                     if sep == "":
                         start = end = int(start)
                     else:
-                        if start == "":
-                            start = 0
-                        else:
-                            start = int(start)
-                        if end == "":
-                            end = num_nodes - 1
-                        else:
-                            end = int(end)
+                        start = 0 if start == "" else int(start)
+                        end = num_nodes - 1 if end == "" else int(end)
                     for i in range(start, end + 1):
                         node_containers[i] = node_range["container"]
 
@@ -720,7 +708,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
             #   for communication with other mock AWS services running on localhost
             extra_hosts = (
                 {"host.docker.internal": "host-gateway"}
-                if platform == "linux" or platform == "linux2"
+                if platform in ["linux", "linux2"]
                 else {}
             )
 
@@ -752,7 +740,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
                 sleep(0.5)
 
             for kwargs in container_kwargs:
-                if len(containers) > 0:
+                if containers:
                     env = kwargs["environment"]
                     network_settings = containers[0].attrs["NetworkSettings"]
                     networks = network_settings["Networks"]
@@ -770,7 +758,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
                 container.reload()
                 containers.append(container)
 
-            for i, container in enumerate(containers):
+            for container in containers:
                 try:
                     container.reload()
 
@@ -846,8 +834,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
                     result = container.wait() or {}
                     exit_code = result.get("StatusCode", 0)
                     self.exit_code = exit_code
-                    job_failed = self.stop or exit_code > 0
-                    if job_failed:
+                    if job_failed := self.stop or exit_code > 0:
                         self._mark_stopped(success=False)
                         break
 
@@ -911,8 +898,6 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
             for dependent_id in dependent_ids:
                 if dependent_id in self.all_jobs:
                     dependent_job = self.all_jobs[dependent_id]
-                    if dependent_job.status == "SUCCEEDED":
-                        successful_dependencies.add(dependent_id)
                     if dependent_job.status == "FAILED":
                         logger.error(
                             f"Terminating job {self.name} due to failed dependency {dependent_job.name}"
@@ -920,6 +905,8 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
                         self._mark_stopped(success=False)
                         return False
 
+                    elif dependent_job.status == "SUCCEEDED":
+                        successful_dependencies.add(dependent_id)
             time.sleep(1)
             if self.stop:
                 # This job has been cancelled while it was waiting for a dependency
@@ -1028,10 +1015,14 @@ class BatchBackend(BaseBackend):
     def get_compute_environment_by_name(
         self, name: str
     ) -> Optional[ComputeEnvironment]:
-        for comp_env in self._compute_environments.values():
-            if comp_env.name == name:
-                return comp_env
-        return None
+        return next(
+            (
+                comp_env
+                for comp_env in self._compute_environments.values()
+                if comp_env.name == name
+            ),
+            None,
+        )
 
     def get_compute_environment(self, identifier: str) -> Optional[ComputeEnvironment]:
         """
@@ -1050,10 +1041,14 @@ class BatchBackend(BaseBackend):
         return self._job_queues.get(arn)
 
     def get_job_queue_by_name(self, name: str) -> Optional[JobQueue]:
-        for comp_env in self._job_queues.values():
-            if comp_env.name == name:
-                return comp_env
-        return None
+        return next(
+            (
+                comp_env
+                for comp_env in self._job_queues.values()
+                if comp_env.name == name
+            ),
+            None,
+        )
 
     def get_job_queue(self, identifier: str) -> Optional[JobQueue]:
         """
@@ -1083,10 +1078,14 @@ class BatchBackend(BaseBackend):
     def get_job_definition_by_name_revision(
         self, name: str, revision: str
     ) -> Optional[JobDefinition]:
-        for job_def in self._job_definitions.values():
-            if job_def.name == name and job_def.revision == int(revision):
-                return job_def
-        return None
+        return next(
+            (
+                job_def
+                for job_def in self._job_definitions.values()
+                if job_def.name == name and job_def.revision == int(revision)
+            ),
+            None,
+        )
 
     def get_job_definition(self, identifier: str) -> Optional[JobDefinition]:
         """
@@ -1121,10 +1120,11 @@ class BatchBackend(BaseBackend):
         if env is not None:
             result.append(env)
         else:
-            for value in self._job_definitions.values():
-                if value.name == identifier:
-                    result.append(value)
-
+            result.extend(
+                value
+                for value in self._job_definitions.values()
+                if value.name == identifier
+            )
         return result
 
     def get_job_by_id(self, identifier: str) -> Optional[Job]:
@@ -1139,14 +1139,11 @@ class BatchBackend(BaseBackend):
         """
         Pagination is not yet implemented
         """
-        envs = set()
-        if environments is not None:
-            envs = set(environments)
-
+        envs = set(environments) if environments is not None else set()
         result = []
         for arn, environment in self._compute_environments.items():
             # Filter shortcut
-            if len(envs) > 0 and arn not in envs and environment.name not in envs:
+            if envs and arn not in envs and environment.name not in envs:
                 continue
 
             json_part: Dict[str, Any] = {
@@ -1254,7 +1251,7 @@ class BatchBackend(BaseBackend):
 
         # Create ECS cluster
         # Should be of format P2OnDemand_Batch_UUID
-        cluster_name = "OnDemand_Batch_" + str(mock_random.uuid4())
+        cluster_name = f"OnDemand_Batch_{str(mock_random.uuid4())}"
         ecs_cluster = self.ecs_backend.create_cluster(cluster_name)
         new_comp_env.set_ecs(ecs_cluster.arn, cluster_name)
 
@@ -1371,18 +1368,16 @@ class BatchBackend(BaseBackend):
         while target > 0:
             current_vcpu, current_instance = instance_vcpus[0]
 
-            if len(instance_vcpus) > 1:
-                if current_vcpu <= target:
-                    target -= current_vcpu
-                    instances.append(current_instance)
-                else:
-                    # try next biggest instance
-                    instance_vcpus.pop(0)
-            else:
-                # Were on the last instance
+            if (
+                len(instance_vcpus) > 1
+                and current_vcpu <= target
+                or len(instance_vcpus) <= 1
+            ):
                 target -= current_vcpu
                 instances.append(current_instance)
-
+            else:
+                # try next biggest instance
+                instance_vcpus.pop(0)
         return instances
 
     def delete_compute_environment(self, compute_environment_name: str) -> None:
@@ -1399,9 +1394,9 @@ class BatchBackend(BaseBackend):
             self.ecs_backend.delete_cluster(compute_env.ecs_name)
 
             if compute_env.env_type == "MANAGED":
-                # Delete compute environment
-                instance_ids = [instance.id for instance in compute_env.instances]
-                if instance_ids:
+                if instance_ids := [
+                    instance.id for instance in compute_env.instances
+                ]:
                     self.ec2_backend.terminate_instances(instance_ids)
 
     def update_compute_environment(
@@ -1435,11 +1430,6 @@ class BatchBackend(BaseBackend):
 
             compute_env.state = state
 
-        if compute_resources is not None:
-            # TODO Implement resizing of instances based on changing vCpus
-            # compute_resources CAN contain desiredvCpus, maxvCpus, minvCpus, and can contain none of them.
-            pass
-
         return compute_env.name, compute_env.arn
 
     def create_job_queue(
@@ -1465,7 +1455,7 @@ class BatchBackend(BaseBackend):
         if self.get_job_queue_by_name(queue_name) is not None:
             raise ClientException(f"Job queue {queue_name} already exists")
 
-        if len(compute_env_order) == 0:
+        if not compute_env_order:
             raise ClientException("At least 1 compute environment must be provided")
         try:
             # orders and extracts computeEnvironment names
@@ -1504,19 +1494,12 @@ class BatchBackend(BaseBackend):
         """
         Pagination is not yet implemented
         """
-        envs = set()
-        if job_queues is not None:
-            envs = set(job_queues)
-
-        result = []
-        for arn, job_queue in self._job_queues.items():
-            # Filter shortcut
-            if len(envs) > 0 and arn not in envs and job_queue.name not in envs:
-                continue
-
-            result.append(job_queue.describe())
-
-        return result
+        envs = set(job_queues) if job_queues is not None else set()
+        return [
+            job_queue.describe()
+            for arn, job_queue in self._job_queues.items()
+            if not envs or arn in envs or job_queue.name in envs
+        ]
 
     def update_job_queue(
         self,
@@ -1713,22 +1696,12 @@ class BatchBackend(BaseBackend):
         return job_name, job.job_id
 
     def describe_jobs(self, jobs: Optional[List[str]]) -> List[Dict[str, Any]]:
-        job_filter = set()
-        if jobs is not None:
-            job_filter = set(jobs)
-
-        result = []
-        for key, job in self._jobs.items():
-            if (
-                len(job_filter) > 0
-                and key not in job_filter
-                and job.arn not in job_filter
-            ):
-                continue
-
-            result.append(job.describe())
-
-        return result
+        job_filter = set(jobs) if jobs is not None else set()
+        return [
+            job.describe()
+            for key, job in self._jobs.items()
+            if not job_filter or key in job_filter or job.arn in job_filter
+        ]
 
     def list_jobs(
         self,
@@ -1766,8 +1739,8 @@ class BatchBackend(BaseBackend):
                 matches = True
                 for filt in filters:
                     name = filt["name"]
-                    values = filt["values"]
                     if name == "JOB_NAME":
+                        values = filt["values"]
                         if job.job_name not in values:
                             matches = False
                             break
@@ -1779,11 +1752,11 @@ class BatchBackend(BaseBackend):
         return jobs
 
     def cancel_job(self, job_id: str, reason: str) -> None:
-        if job_id == "":
+        if not job_id:
             raise ClientException(
                 "'jobId' is a required field (cannot be an empty string)"
             )
-        if reason == "":
+        if not reason:
             raise ClientException(
                 "'reason' is a required field (cannot be an empty string)"
             )
@@ -1795,11 +1768,11 @@ class BatchBackend(BaseBackend):
             # No-Op for jobs that have already started - user has to explicitly terminate those
 
     def terminate_job(self, job_id: str, reason: str) -> None:
-        if job_id == "":
+        if not job_id:
             raise ClientException(
                 "'jobId' is a required field (cannot be a empty string)"
             )
-        if reason == "":
+        if not reason:
             raise ClientException(
                 "'reason' is a required field (cannot be a empty string)"
             )

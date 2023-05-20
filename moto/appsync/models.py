@@ -52,7 +52,7 @@ class GraphqlSchema(BaseModel):
 
 class GraphqlAPIKey(BaseModel):
     def __init__(self, description: str, expires: Optional[int]):
-        self.key_id = str(mock_random.uuid4())[0:6]
+        self.key_id = str(mock_random.uuid4())[:6]
         self.description = description
         if not expires:
             default_expiry = datetime.now(timezone.utc)
@@ -107,7 +107,7 @@ class GraphqlAPI(BaseModel):
         self.arn = f"arn:aws:appsync:{self.region}:{account_id}:apis/{self.api_id}"
         self.graphql_schema: Optional[GraphqlSchema] = None
 
-        self.api_keys: Dict[str, GraphqlAPIKey] = dict()
+        self.api_keys: Dict[str, GraphqlAPIKey] = {}
 
     def update(
         self,
@@ -191,7 +191,7 @@ class AppSyncBackend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.graphql_apis: Dict[str, GraphqlAPI] = dict()
+        self.graphql_apis: Dict[str, GraphqlAPI] = {}
         self.tagger = TaggingService()
 
     def create_graphql_api(

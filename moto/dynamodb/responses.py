@@ -98,21 +98,18 @@ def validate_put_has_empty_keys(
             if next(iter(val.keys())) in ["S", "B"] and next(iter(val.values())) == ""
         ]
 
-        # First validate that all of the GSI-keys are set
-        empty_gsi_key = next(
+        if empty_gsi_key := next(
             (kn for kn in gsi_key_names if kn in empty_str_fields), None
-        )
-        if empty_gsi_key:
+        ):
             gsi_name = table.global_indexes[0].name
             raise MockValidationException(
                 f"One or more parameter values are not valid. A value specified for a secondary index key is not supported. The AttributeValue for a key attribute cannot contain an empty string value. IndexName: {gsi_name}, IndexKey: {empty_gsi_key}"
             )
 
-        # Then validate that all of the regular keys are set
-        empty_key = next(
-            (keyname for keyname in key_names if keyname in empty_str_fields), None
-        )
-        if empty_key:
+        if empty_key := next(
+            (keyname for keyname in key_names if keyname in empty_str_fields),
+            None,
+        ):
             msg = (
                 custom_error_msg
                 or "One or more parameter values were invalid: An AttributeValue may not contain an empty string. Key: {}"
@@ -127,7 +124,9 @@ def put_has_empty_attrs(field_updates: Dict[str, Any], table: Table) -> bool:
             return True
         else:
             return any(
-                [_validate_attr(val) for val in attr.values() if isinstance(val, dict)]
+                _validate_attr(val)
+                for val in attr.values()
+                if isinstance(val, dict)
             )
 
     if table:
@@ -135,7 +134,7 @@ def put_has_empty_attrs(field_updates: Dict[str, Any], table: Table) -> bool:
         attrs_to_check = [
             val for attr, val in field_updates.items() if attr not in key_names
         ]
-        return any([_validate_attr(attr) for attr in attrs_to_check])
+        return any(_validate_attr(attr) for attr in attrs_to_check)
     return False
 
 
@@ -174,9 +173,7 @@ class DynamoHandler(BaseResponse):
 
         ie: X-Amz-Target: DynamoDB_20111205.ListTables -> ListTables
         """
-        # Headers are case-insensitive. Probably a better way to do this.
-        match = headers.get("x-amz-target") or headers.get("X-Amz-Target")
-        if match:
+        if match := headers.get("x-amz-target") or headers.get("X-Amz-Target"):
             return match.split(".")[1]
         return None
 
@@ -192,19 +189,16 @@ class DynamoHandler(BaseResponse):
     @amzn_request_id
     def call_action(self) -> TYPE_RESPONSE:
         self.body = json.loads(self.body or "{}")
-        endpoint = self.get_endpoint_name(self.headers)
-        if endpoint:
-            endpoint = camelcase_to_underscores(endpoint)
-            response = getattr(self, endpoint)()
-            if isinstance(response, str):
-                return 200, self.response_headers, response
-
-            else:
-                status_code, new_headers, response_content = response
-                self.response_headers.update(new_headers)
-                return status_code, self.response_headers, response_content
-        else:
+        if not (endpoint := self.get_endpoint_name(self.headers)):
             return 404, self.response_headers, ""
+        endpoint = camelcase_to_underscores(endpoint)
+        response = getattr(self, endpoint)()
+        if isinstance(response, str):
+            return 200, self.response_headers, response
+
+        status_code, new_headers, response_content = response
+        self.response_headers.update(new_headers)
+        return status_code, self.response_headers, response_content
 
     def list_tables(self) -> str:
         body = self.body
@@ -259,22 +253,20 @@ class DynamoHandler(BaseResponse):
             )
         local_secondary_indexes = local_secondary_indexes or []
         # Verify AttributeDefinitions list all
-        expected_attrs = []
-        expected_attrs.extend([key["AttributeName"] for key in key_schema])
+        expected_attrs = [key["AttributeName"] for key in key_schema]
         expected_attrs.extend(
             schema["AttributeName"]
             for schema in itertools.chain(
-                *list(idx["KeySchema"] for idx in local_secondary_indexes)
+                *[idx["KeySchema"] for idx in local_secondary_indexes]
             )
         )
         expected_attrs.extend(
             schema["AttributeName"]
             for schema in itertools.chain(
-                *list(idx["KeySchema"] for idx in global_indexes)
+                *[idx["KeySchema"] for idx in global_indexes]
             )
         )
-        expected_attrs = list(set(expected_attrs))
-        expected_attrs.sort()
+        expected_attrs = sorted(set(expected_attrs))
         actual_attrs = [item["AttributeName"] for item in attr]
         actual_attrs.sort()
         if actual_attrs != expected_attrs:
@@ -377,8 +369,7 @@ class DynamoHandler(BaseResponse):
         table_arn = self.body["ResourceArn"]
         all_tags = self.dynamodb_backend.list_tags_of_resource(table_arn)
         all_tag_keys = [tag["Key"] for tag in all_tags]
-        marker = self.body.get("NextToken")
-        if marker:
+        if marker := self.body.get("NextToken"):
             start = all_tag_keys.index(marker) + 1
         else:
             start = 0
@@ -431,14 +422,9 @@ class DynamoHandler(BaseResponse):
         validate_put_has_gsi_keys_set_to_none(item, table)
 
         overwrite = "Expected" not in self.body
-        if not overwrite:
-            expected = self.body["Expected"]
-        else:
-            expected = None
-
+        expected = self.body["Expected"] if not overwrite else None
         if return_values == "ALL_OLD":
-            existing_item = self.dynamodb_backend.get_item(name, item)
-            if existing_item:
+            if existing_item := self.dynamodb_backend.get_item(name, item):
                 existing_attributes = existing_item.to_json()["Attributes"]
             else:
                 existing_attributes = {}
@@ -515,8 +501,7 @@ class DynamoHandler(BaseResponse):
         name = self.body["TableName"]
         self.dynamodb_backend.get_table(name)
         key = self.body["Key"]
-        empty_keys = [k for k, v in key.items() if not next(iter(v.values()))]
-        if empty_keys:
+        if empty_keys := [k for k, v in key.items() if not next(iter(v.values()))]:
             raise MockValidationException(
                 "One or more parameter values are not valid. The AttributeValue for a key attribute cannot contain an "
                 f"empty string value. Key: {empty_keys[0]}"
@@ -545,8 +530,9 @@ class DynamoHandler(BaseResponse):
             projection_expression, expression_attribute_names
         )
 
-        item = self.dynamodb_backend.get_item(name, key, projection_expression)
-        if item:
+        if item := self.dynamodb_backend.get_item(
+            name, key, projection_expression
+        ):
             item_dict = item.describe_attrs(attributes=None)
             return dynamo_json_dump(item_dict)
         else:
@@ -554,26 +540,23 @@ class DynamoHandler(BaseResponse):
             return dynamo_json_dump({})
 
     def batch_get_item(self) -> str:
-        table_batches = self.body["RequestItems"]
-
         results: Dict[str, Any] = {
             "ConsumedCapacity": [],
             "Responses": {},
             "UnprocessedKeys": {},
         }
 
+        table_batches = self.body["RequestItems"]
         # Validation: Can only request up to 100 items at the same time
         # Scenario 1: We're requesting more than a 100 keys from a single table
         for table_name, table_request in table_batches.items():
             if len(table_request["Keys"]) > 100:
                 raise MockValidationException(
-                    "1 validation error detected: Value at 'requestItems."
-                    + table_name
-                    + ".member.keys' failed to satisfy constraint: Member must have length less than or equal to 100"
+                    f"1 validation error detected: Value at 'requestItems.{table_name}.member.keys' failed to satisfy constraint: Member must have length less than or equal to 100"
                 )
         # Scenario 2: We're requesting more than a 100 keys across all tables
         nr_of_keys_across_all_tables = sum(
-            [len(req["Keys"]) for _, req in table_batches.items()]
+            len(req["Keys"]) for _, req in table_batches.items()
         )
         if nr_of_keys_across_all_tables > 100:
             raise MockValidationException(
@@ -599,10 +582,9 @@ class DynamoHandler(BaseResponse):
 
             results["Responses"][table_name] = []
             for key in keys:
-                item = self.dynamodb_backend.get_item(
+                if item := self.dynamodb_backend.get_item(
                     table_name, key, projection_expression
-                )
-                if item:
+                ):
                     # A single operation can retrieve up to 16 MB of data [and] returns a partial result if the response size limit is exceeded
                     if result_size + item.size() > (16 * 1024 * 1024):
                         # Result is already getting too big - next results should be part of UnprocessedKeys
@@ -677,22 +659,25 @@ class DynamoHandler(BaseResponse):
                 if hash_key_name is None:
                     raise ResourceNotFoundException
                 hash_key = key_conditions[hash_key_name]["AttributeValueList"][0]
-                if len(key_conditions) == 1:
+                if (
+                    len(key_conditions) != 1
+                    and (range_key_name is not None or filter_kwargs)
+                    and (range_condition := key_conditions.get(range_key_name))
+                ):
+                    range_comparison = range_condition["ComparisonOperator"]
+                    range_values = range_condition["AttributeValueList"]
+                elif (
+                    len(key_conditions) != 1
+                    and (range_key_name is not None or filter_kwargs)
+                    and not (range_condition := key_conditions.get(range_key_name))
+                    or len(key_conditions) == 1
+                ):
                     range_comparison = None
                     range_values = []
                 else:
-                    if range_key_name is None and not filter_kwargs:
-                        raise MockValidationException("Validation Exception")
-                    else:
-                        range_condition = key_conditions.get(range_key_name)
-                        if range_condition:
-                            range_comparison = range_condition["ComparisonOperator"]
-                            range_values = range_condition["AttributeValueList"]
-                        else:
-                            range_comparison = None
-                            range_values = []
+                    raise MockValidationException("Validation Exception")
             if query_filters:
-                filter_kwargs.update(query_filters)
+                filter_kwargs |= query_filters
         index_name = self.body.get("IndexName")
         exclusive_start_key = self.body.get("ExclusiveStartKey")
         limit = self.body.get("Limit")
@@ -844,9 +829,9 @@ class DynamoHandler(BaseResponse):
             raise MockValidationException(
                 "Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributeUpdates} Expression parameters: {UpdateExpression}"
             )
-        # We need to copy the item in order to avoid it being modified by the update_item operation
-        existing_item = copy.deepcopy(self.dynamodb_backend.get_item(name, key))
-        if existing_item:
+        if existing_item := copy.deepcopy(
+            self.dynamodb_backend.get_item(name, key)
+        ):
             existing_attributes = existing_item.to_json()["Attributes"]
         else:
             existing_attributes = {}
@@ -860,11 +845,7 @@ class DynamoHandler(BaseResponse):
         ):
             raise MockValidationException("Return values set to invalid value")
 
-        if "Expected" in self.body:
-            expected = self.body["Expected"]
-        else:
-            expected = None
-
+        expected = self.body["Expected"] if "Expected" in self.body else None
         # Attempt to parse simple ConditionExpressions into an Expected
         # expression
         condition_expression = self.body.get("ConditionExpression")
@@ -910,29 +891,27 @@ class DynamoHandler(BaseResponse):
         return dynamo_json_dump(item_dict)
 
     def _build_updated_new_attributes(self, original: Any, changed: Any) -> Any:
-        if type(changed) != type(original):
-            return changed
-        else:
-            if type(changed) is dict:
-                return {
-                    key: self._build_updated_new_attributes(
-                        original.get(key, None), changed[key]
+        if type(changed) == type(original) and type(changed) is dict:
+            return {
+                key: self._build_updated_new_attributes(
+                    original.get(key, None), changed[key]
+                )
+                for key in changed.keys()
+                if key not in original or changed[key] != original[key]
+            }
+        elif type(changed) == type(original) and type(changed) in (set, list):
+            return (
+                changed
+                if len(changed) != len(original)
+                else [
+                    self._build_updated_new_attributes(
+                        original[index], changed[index]
                     )
-                    for key in changed.keys()
-                    if key not in original or changed[key] != original[key]
-                }
-            elif type(changed) in (set, list):
-                if len(changed) != len(original):
-                    return changed
-                else:
-                    return [
-                        self._build_updated_new_attributes(
-                            original[index], changed[index]
-                        )
-                        for index in range(len(changed))
-                    ]
-            else:
-                return changed
+                    for index in range(len(changed))
+                ]
+            )
+        else:
+            return changed
 
     def describe_limits(self) -> str:
         return json.dumps(
@@ -960,31 +939,23 @@ class DynamoHandler(BaseResponse):
         return json.dumps({"TimeToLiveDescription": ttl_spec})
 
     def transact_get_items(self) -> str:
-        transact_items = self.body["TransactItems"]
-        responses: List[Dict[str, Any]] = list()
+        responses: List[Dict[str, Any]] = []
 
+        transact_items = self.body["TransactItems"]
         if len(transact_items) > TRANSACTION_MAX_ITEMS:
-            msg = "1 validation error detected: Value '["
-            err_list = list()
-            request_id = 268435456
-            for _ in transact_items:
-                request_id += 1
+            err_list = []
+            for request_id, _ in enumerate(transact_items, start=268435457):
                 hex_request_id = format(request_id, "x")
                 err_list.append(
-                    "com.amazonaws.dynamodb.v20120810.TransactGetItem@%s"
-                    % hex_request_id
+                    f"com.amazonaws.dynamodb.v20120810.TransactGetItem@{hex_request_id}"
                 )
-            msg += ", ".join(err_list)
-            msg += (
-                "'] at 'transactItems' failed to satisfy constraint: "
-                "Member must have length less than or equal to %s"
-                % TRANSACTION_MAX_ITEMS
-            )
+            msg = "1 validation error detected: Value '[" + ", ".join(err_list)
+            msg += f"'] at 'transactItems' failed to satisfy constraint: Member must have length less than or equal to {TRANSACTION_MAX_ITEMS}"
 
             raise MockValidationException(msg)
 
         ret_consumed_capacity = self.body.get("ReturnConsumedCapacity", "NONE")
-        consumed_capacity: Dict[str, Any] = dict()
+        consumed_capacity: Dict[str, Any] = {}
 
         for transact_item in transact_items:
 
@@ -1013,10 +984,9 @@ class DynamoHandler(BaseResponse):
                     "ReadCapacityUnits": read_capacity_units,
                 }
 
-        result = dict()
-        result.update({"Responses": responses})
+        result = {"Responses": responses}
         if ret_consumed_capacity != "NONE":
-            result.update({"ConsumedCapacity": [v for v in consumed_capacity.values()]})
+            result["ConsumedCapacity"] = list(consumed_capacity.values())
 
         return dynamo_json_dump(result)
 

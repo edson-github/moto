@@ -108,7 +108,7 @@ class AppSyncResponse(BaseResponse):
     def delete_graphql_api(self) -> TYPE_RESPONSE:
         api_id = self.path.split("/")[-1]
         self.appsync_backend.delete_graphql_api(api_id=api_id)
-        return 200, {}, json.dumps(dict())
+        return 200, {}, json.dumps({})
 
     def update_graphql_api(self) -> TYPE_RESPONSE:
         api_id = self.path.split("/")[-1]
@@ -161,7 +161,7 @@ class AppSyncResponse(BaseResponse):
         api_id = self.path.split("/")[-3]
         api_key_id = self.path.split("/")[-1]
         self.appsync_backend.delete_api_key(api_id=api_id, api_key_id=api_key_id)
-        return 200, {}, json.dumps(dict())
+        return 200, {}, json.dumps({})
 
     def list_api_keys(self) -> TYPE_RESPONSE:
         # /v1/apis/[api_id]/apikeys
@@ -202,7 +202,7 @@ class AppSyncResponse(BaseResponse):
         params = json.loads(self.body)
         tags = params.get("tags")
         self.appsync_backend.tag_resource(resource_arn=resource_arn, tags=tags)
-        return 200, {}, json.dumps(dict())
+        return 200, {}, json.dumps({})
 
     def untag_resource(self) -> TYPE_RESPONSE:
         resource_arn = self._extract_arn_from_path()
@@ -210,7 +210,7 @@ class AppSyncResponse(BaseResponse):
         self.appsync_backend.untag_resource(
             resource_arn=resource_arn, tag_keys=tag_keys
         )
-        return 200, {}, json.dumps(dict())
+        return 200, {}, json.dumps({})
 
     def list_tags_for_resource(self) -> TYPE_RESPONSE:
         resource_arn = self._extract_arn_from_path()

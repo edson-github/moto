@@ -236,32 +236,32 @@ class LambdaResponse(BaseResponse):
         function_name = unquote(self.path.rsplit("/", 2)[-2])
         qualifier = self._get_param("qualifier")
 
-        payload = self.backend.invoke(
-            function_name, qualifier, self.body, self.headers, response_headers
-        )
-        if payload:
-            if request.headers.get("X-Amz-Invocation-Type") != "Event":
-                if sys.getsizeof(payload) > 6000000:
-                    response_headers["Content-Length"] = "142"
-                    response_headers["x-amz-function-error"] = "Unhandled"
-                    error_dict = {
-                        "errorMessage": "Response payload size exceeded maximum allowed payload size (6291556 bytes).",
-                        "errorType": "Function.ResponseSizeTooLarge",
-                    }
-                    payload = json.dumps(error_dict).encode("utf-8")
-
-            response_headers["content-type"] = "application/json"
-            if request.headers.get("X-Amz-Invocation-Type") == "Event":
-                status_code = 202
-            elif request.headers.get("X-Amz-Invocation-Type") == "DryRun":
-                status_code = 204
-            else:
-                if request.headers.get("X-Amz-Log-Type") != "Tail":
-                    del response_headers["x-amz-log-result"]
-                status_code = 200
-            return status_code, response_headers, payload
-        else:
+        if not (
+            payload := self.backend.invoke(
+                function_name, qualifier, self.body, self.headers, response_headers
+            )
+        ):
             return 404, response_headers, "{}"
+        if request.headers.get("X-Amz-Invocation-Type") != "Event":
+            if sys.getsizeof(payload) > 6000000:
+                response_headers["Content-Length"] = "142"
+                response_headers["x-amz-function-error"] = "Unhandled"
+                error_dict = {
+                    "errorMessage": "Response payload size exceeded maximum allowed payload size (6291556 bytes).",
+                    "errorType": "Function.ResponseSizeTooLarge",
+                }
+                payload = json.dumps(error_dict).encode("utf-8")
+
+        response_headers["content-type"] = "application/json"
+        if request.headers.get("X-Amz-Invocation-Type") == "Event":
+            status_code = 202
+        elif request.headers.get("X-Amz-Invocation-Type") == "DryRun":
+            status_code = 204
+        else:
+            if request.headers.get("X-Amz-Log-Type") != "Tail":
+                del response_headers["x-amz-log-result"]
+            status_code = 200
+        return status_code, response_headers, payload
 
     def _invoke_async(self) -> Tuple[int, Dict[str, str], Union[str, bytes]]:
         response_headers: Dict[str, Any] = {}
@@ -332,22 +332,21 @@ class LambdaResponse(BaseResponse):
         return 200, {}, json.dumps(result)
 
     def _get_event_source_mapping(self, uuid: str) -> TYPE_RESPONSE:
-        result = self.backend.get_event_source_mapping(uuid)
-        if result:
+        if result := self.backend.get_event_source_mapping(uuid):
             return 200, {}, json.dumps(result.get_configuration())
         else:
             return 404, {}, "{}"
 
     def _update_event_source_mapping(self, uuid: str) -> TYPE_RESPONSE:
-        result = self.backend.update_event_source_mapping(uuid, self.json_body)
-        if result:
+        if result := self.backend.update_event_source_mapping(
+            uuid, self.json_body
+        ):
             return 202, {}, json.dumps(result.get_configuration())
         else:
             return 404, {}, "{}"
 
     def _delete_event_source_mapping(self, uuid: str) -> TYPE_RESPONSE:
-        esm = self.backend.delete_event_source_mapping(uuid)
-        if esm:
+        if esm := self.backend.delete_event_source_mapping(uuid):
             json_result = esm.get_configuration()
             json_result.update({"State": "Deleting"})
             return 202, {}, json.dumps(json_result)
@@ -401,8 +400,7 @@ class LambdaResponse(BaseResponse):
         return 200, {}, json.dumps(configuration)
 
     def _get_aws_region(self, full_url: str) -> str:
-        region = self.region_regex.search(full_url)
-        if region:
+        if region := self.region_regex.search(full_url):
             return region.group(1)
         else:
             return self.default_region
@@ -429,11 +427,9 @@ class LambdaResponse(BaseResponse):
     def _put_configuration(self) -> TYPE_RESPONSE:
         function_name = unquote(self.path.rsplit("/", 2)[-2])
         qualifier = self._get_param("Qualifier", None)
-        resp = self.backend.update_function_configuration(
+        if resp := self.backend.update_function_configuration(
             function_name, qualifier, body=self.json_body
-        )
-
-        if resp:
+        ):
             return 200, {}, json.dumps(resp)
         else:
             return 404, {}, "{}"
@@ -441,11 +437,9 @@ class LambdaResponse(BaseResponse):
     def _put_code(self) -> TYPE_RESPONSE:
         function_name = unquote(self.path.rsplit("/", 2)[-2])
         qualifier = self._get_param("Qualifier", None)
-        resp = self.backend.update_function_code(
+        if resp := self.backend.update_function_code(
             function_name, qualifier, body=self.json_body
-        )
-
-        if resp:
+        ):
             return 200, {}, json.dumps(resp)
         else:
             return 404, {}, "{}"

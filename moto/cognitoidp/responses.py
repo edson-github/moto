@@ -102,18 +102,16 @@ class CognitoIdpResponse(BaseResponse):
         user_pool_domain = self.backend.create_user_pool_domain(
             user_pool_id, domain, custom_domain_config
         )
-        domain_description = user_pool_domain.to_json(extended=False)
-        if domain_description:
+        if domain_description := user_pool_domain.to_json(extended=False):
             return json.dumps(domain_description)
         return ""
 
     def describe_user_pool_domain(self) -> str:
         domain = self._get_param("Domain")
-        user_pool_domain = self.backend.describe_user_pool_domain(domain)
-        domain_description: Dict[str, Any] = {}
-        if user_pool_domain:
+        if user_pool_domain := self.backend.describe_user_pool_domain(domain):
             domain_description = user_pool_domain.to_json()
-
+        else:
+            domain_description = {}
         return json.dumps({"DomainDescription": domain_description})
 
     def delete_user_pool_domain(self) -> str:
@@ -127,8 +125,7 @@ class CognitoIdpResponse(BaseResponse):
         user_pool_domain = self.backend.update_user_pool_domain(
             domain, custom_domain_config
         )
-        domain_description = user_pool_domain.to_json(extended=False)
-        if domain_description:
+        if domain_description := user_pool_domain.to_json(extended=False):
             return json.dumps(domain_description)
         return ""
 
@@ -388,8 +385,7 @@ class CognitoIdpResponse(BaseResponse):
                 "sub",
             ]
 
-            match = re.match(r"([\w:]+)\s*(=|\^=)\s*\"(.*)\"", filt)
-            if match:
+            if match := re.match(r"([\w:]+)\s*(=|\^=)\s*\"(.*)\"", filt):
                 name, op, value = match.groups()
             else:
                 raise InvalidParameterException("Error while parsing filter")

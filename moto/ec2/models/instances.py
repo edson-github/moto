@@ -172,7 +172,7 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
         elif placement:
             self._placement.zone = placement
         else:
-            self._placement.zone = ec2_backend.region_name + "a"
+            self._placement.zone = f"{ec2_backend.region_name}a"
 
         self.block_device_mapping: BlockDeviceMapping = BlockDeviceMapping()
 
@@ -190,19 +190,13 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
             with contextlib.suppress(InvalidSubnetIdError):
                 subnet: Subnet = self.ec2_backend.get_subnet(self.subnet_id)
                 return subnet.vpc_id
-        if self.nics and 0 in self.nics:
-            return self.nics[0].subnet.vpc_id
-        return None
+        return self.nics[0].subnet.vpc_id if self.nics and 0 in self.nics else None
 
     def __del__(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             subnet: Subnet = self.ec2_backend.get_subnet(self.subnet_id)
             for ip in self._private_ips:
                 subnet.del_subnet_ip(ip)
-        except Exception:
-            # Its not "super" critical we clean this up, as reset will do this
-            # worst case we'll get IP address exaustion... rarely
-            pass
 
     def add_block_device(
         self,
@@ -463,13 +457,16 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
         return self.security_groups
 
     def _get_private_ip_from_nic(self, nic: Dict[str, Any]) -> Optional[str]:
-        private_ip = nic.get("PrivateIpAddress")
-        if private_ip:
+        if private_ip := nic.get("PrivateIpAddress"):
             return private_ip
-        for address in nic.get("PrivateIpAddresses", []):
-            if address.get("Primary") == "true":
-                return address.get("PrivateIpAddress")
-        return None
+        return next(
+            (
+                address.get("PrivateIpAddress")
+                for address in nic.get("PrivateIpAddresses", [])
+                if address.get("Primary") == "true"
+            ),
+            None,
+        )
 
     def prep_nics(
         self,
@@ -506,7 +503,7 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
             "PrivateIpAddress": private_ip,
             "AssociatePublicIpAddress": associate_public_ip,
         }
-        primary_nic = dict((k, v) for k, v in primary_nic.items() if v)
+        primary_nic = {k: v for k, v in primary_nic.items() if v}
 
         # If empty NIC spec but primary NIC values provided, create NIC from
         # them.
@@ -518,8 +515,7 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
         for nic in nic_spec:
             device_index = int(nic.get("DeviceIndex"))  # type: ignore[arg-type]
 
-            nic_id = nic.get("NetworkInterfaceId")
-            if nic_id:
+            if nic_id := nic.get("NetworkInterfaceId"):
                 # If existing NIC found, use it.
                 use_nic = self.ec2_backend.get_network_interface(nic_id)
                 use_nic.device_index = device_index
@@ -554,7 +550,7 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
             self.attach_eni(use_nic, device_index)
 
     def attach_eni(self, eni: NetworkInterface, device_index: int) -> str:
-        device_index = int(device_index)
+        device_index = device_index
         self.nics[device_index] = eni
 
         # This is used upon associate/disassociate public IP.
@@ -576,13 +572,13 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
 
     @classmethod
     def has_cfn_attr(cls, attr: str) -> bool:
-        return attr in [
+        return attr in {
             "AvailabilityZone",
             "PrivateDnsName",
             "PublicDnsName",
             "PrivateIp",
             "PublicIp",
-        ]
+        }
 
     def get_cfn_attribute(self, attribute_name: str) -> Any:
         from moto.cloudformation.exceptions import UnformattedGetAttTemplateException
@@ -600,19 +596,19 @@ class Instance(TaggedEC2Resource, BotoInstance, CloudFormationModel):
         raise UnformattedGetAttTemplateException()
 
     def applies(self, filters: List[Dict[str, Any]]) -> bool:
-        if filters:
-            applicable = False
-            for f in filters:
-                acceptable_values = f["values"]
-                if f["name"] == "instance-state-name":
-                    if self._state.name in acceptable_values:
-                        applicable = True
-                if f["name"] == "instance-state-code":
-                    if str(self._state.code) in acceptable_values:
-                        applicable = True
-            return applicable
-        # If there are no filters, all instances are valid
-        return True
+        if not filters:
+            # If there are no filters, all instances are valid
+            return True
+        applicable = False
+        for f in filters:
+            acceptable_values = f["values"]
+            if f["name"] == "instance-state-name":
+                if self._state.name in acceptable_values:
+                    applicable = True
+            if f["name"] == "instance-state-code":
+                if str(self._state.code) in acceptable_values:
+                    applicable = True
+        return applicable
 
 
 class InstanceBackend:
@@ -656,12 +652,9 @@ class InstanceBackend:
                     location_type,
                 )
                 for valid_instance in valid_instance_types.get(
-                    kwargs["region_name"]
-                    if "region_name" in kwargs
-                    else default_region,
-                    {},
+                    kwargs.get("region_name", default_region), {}
                 )
-            },
+            }
         ):
             if settings.EC2_ENABLE_INSTANCE_TYPE_VALIDATION:
                 raise InvalidInstanceTypeError(kwargs["instance_type"])
@@ -810,9 +803,10 @@ class InstanceBackend:
         self, instance_id: str, new_group_id_list: List[str]
     ) -> Instance:
         instance = self.get_instance(instance_id)
-        new_group_list = []
-        for new_group_id in new_group_id_list:
-            new_group_list.append(self.get_security_group_from_id(new_group_id))  # type: ignore[attr-defined]
+        new_group_list = [
+            self.get_security_group_from_id(new_group_id)
+            for new_group_id in new_group_id_list
+        ]
         setattr(instance, "security_groups", new_group_list)
         return instance
 
@@ -833,25 +827,26 @@ class InstanceBackend:
     def describe_instance_credit_specifications(
         self, instance_ids: List[str]
     ) -> List[Instance]:
-        queried_instances = []
-        for instance in self.get_multi_instances_by_id(instance_ids):
-            queried_instances.append(instance)
-        return queried_instances
+        return list(self.get_multi_instances_by_id(instance_ids))
 
     def all_instances(self, filters: Any = None) -> List[Instance]:
         instances = []
         for reservation in self.all_reservations():
-            for instance in reservation.instances:
-                if instance.applies(filters):
-                    instances.append(instance)
+            instances.extend(
+                instance
+                for instance in reservation.instances
+                if instance.applies(filters)
+            )
         return instances
 
     def all_running_instances(self, filters: Any = None) -> List[Instance]:
         instances = []
         for reservation in self.all_reservations():
-            for instance in reservation.instances:
-                if instance.state_code == 16 and instance.applies(filters):
-                    instances.append(instance)
+            instances.extend(
+                instance
+                for instance in reservation.instances
+                if instance.state_code == 16 and instance.applies(filters)
+            )
         return instances
 
     def get_multi_instances_by_id(
@@ -950,5 +945,4 @@ class InstanceBackend:
             )[0]
         )
         version = launch_template_arg.get("Version", template.latest_version_number)
-        template_version = template.get_version(int(version))
-        return template_version
+        return template.get_version(int(version))

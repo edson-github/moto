@@ -57,7 +57,7 @@ class CertificateAuthority(BaseModel):
         self.certificate_chain: Optional[bytes] = None
         self.csr = self.generate_csr(common_name)
 
-        self.issued_certificates: Dict[str, bytes] = dict()
+        self.issued_certificates: Dict[str, bytes] = {}
 
     def generate_cert(self, common_name: str, subject: cryptography.x509.Name) -> bytes:
         issuer = cryptography.x509.Name(
@@ -174,12 +174,10 @@ class CertificateAuthority(BaseModel):
         if self.updated_at:
             dct["LastStateChangeAt"] = self.updated_at
         if self.certificate:
-            dct.update(
-                {
-                    "NotBefore": self.not_valid_before,
-                    "NotAfter": self.not_valid_after,
-                }
-            )
+            dct |= {
+                "NotBefore": self.not_valid_before,
+                "NotAfter": self.not_valid_after,
+            }
         return dct
 
 
@@ -188,7 +186,7 @@ class ACMPCABackend(BaseBackend):
 
     def __init__(self, region_name: str, account_id: str):
         super().__init__(region_name, account_id)
-        self.certificate_authorities: Dict[str, CertificateAuthority] = dict()
+        self.certificate_authorities: Dict[str, CertificateAuthority] = {}
         self.tagger = TaggingService()
 
     def create_certificate_authority(
@@ -260,8 +258,7 @@ class ACMPCABackend(BaseBackend):
         Some fields of the resulting certificate will have default values, instead of using the CSR
         """
         ca = self.describe_certificate_authority(certificate_authority_arn)
-        certificate_arn = ca.issue_certificate(csr)
-        return certificate_arn
+        return ca.issue_certificate(csr)
 
     def get_certificate(
         self, certificate_authority_arn: str, certificate_arn: str

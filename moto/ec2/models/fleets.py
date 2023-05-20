@@ -293,9 +293,7 @@ class FleetsBackend:
 
     def describe_fleet_instances(self, fleet_id: str) -> List[Any]:
         fleet = self.get_fleet(fleet_id)
-        if not fleet:
-            return []
-        return fleet.spot_requests + fleet.on_demand_instances
+        return [] if not fleet else fleet.spot_requests + fleet.on_demand_instances
 
     def describe_fleets(self, fleet_ids: Optional[List[str]]) -> List[Fleet]:
         fleets = list(self.fleets.values())

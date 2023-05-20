@@ -64,7 +64,7 @@ class ComprehendResponse(BaseResponse):
         self.comprehend_backend.stop_training_entity_recognizer(
             entity_recognizer_arn=entity_recognizer_arn,
         )
-        return json.dumps(dict())
+        return json.dumps({})
 
     def list_tags_for_resource(self) -> str:
         params = json.loads(self.body)
